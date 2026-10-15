@@ -1,0 +1,17 @@
+# secrets
+.env
+.env.*
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# local run output (committed demos go in evidence/)
+runs/
+
+# the take-home brief belongs to interface.ai; keep it out of the public repo
+docs/*.pdf
