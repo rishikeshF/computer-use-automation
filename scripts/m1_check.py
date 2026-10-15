@@ -45,16 +45,13 @@ LOG_OUT = LocatorChain(strategies=(RoleName(role="link", name="Log Out"),))
 
 
 def credentials() -> tuple[str | None, str | None]:
-    """ParaBank test credentials. Read from the .env file itself, never via os.environ for the
-    plain names: Windows env vars are case-insensitive, so `username` would silently resolve to
-    the OS login name in %USERNAME%."""
+    """ParaBank test credentials from the environment or the repo's .env.
+
+    Names are namespaced on purpose: Windows env vars are case-insensitive, so a plain
+    `username` key would silently resolve to the OS login name in %USERNAME%."""
     file = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
-    user = (
-        os.environ.get("PARABANK_USERNAME") or file.get("PARABANK_USERNAME") or file.get("username")
-    )
-    pw = (
-        os.environ.get("PARABANK_PASSWORD") or file.get("PARABANK_PASSWORD") or file.get("password")
-    )
+    user = os.environ.get("PARABANK_USERNAME") or file.get("PARABANK_USERNAME")
+    pw = os.environ.get("PARABANK_PASSWORD") or file.get("PARABANK_PASSWORD")
     return user, pw
 
 
@@ -79,7 +76,7 @@ def explain(what: str, r: Resolved | Unresolved) -> str:
 async def main(headed: bool) -> int:
     user, password = credentials()
     if not user or not password:
-        print("Set PARABANK_USERNAME and PARABANK_PASSWORD (or username/password) in .env")
+        print("Set PARABANK_USERNAME and PARABANK_PASSWORD in .env")
         return 2
 
     async with WebSurface.launch(headless=not headed) as s:

@@ -18,8 +18,8 @@ uv run playwright install chromium
 Create `.env` in the repo root (never committed):
 
 ```
-username=<your ParaBank test user>
-password=<its password>
+PARABANK_USERNAME=<your ParaBank test user>
+PARABANK_PASSWORD=<its password>
 ```
 
 ## Milestone checks
