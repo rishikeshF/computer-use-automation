@@ -46,6 +46,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 [dependency-groups]
 dev = [
     "mypy>=2.4.0",
+    "pillow>=12.3.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.17.0",

@@ -60,3 +60,13 @@ def test_only_surface_imports_playwright() -> None:
         if not mod.startswith("cua.surface") and any(i.startswith("playwright") for i in imps)
     ]
     assert not offenders, f"Playwright used outside cua.surface: {offenders}"
+
+
+def test_core_depends_on_nothing_else_in_cua() -> None:
+    """core holds the shared types; every other layer depends on it, never the reverse."""
+    leaks = {
+        mod: sorted(i for i in imps if i.startswith("cua.") and not i.startswith("cua.core"))
+        for mod, imps in GRAPH.items()
+        if mod.startswith("cua.core")
+    }
+    assert not any(leaks.values()), f"core imports other layers: {leaks}"

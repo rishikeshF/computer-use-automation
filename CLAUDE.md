@@ -35,4 +35,4 @@ No Docker. Fault injection is client-side only (Playwright route interception on
 - Commit per milestone. Do not start the next milestone until the current one's acceptance check passes and Rishi has reviewed.
 - Writing in docs: short, plain, no em-dashes, simple, easy to understand, comments wherever possible.
 
-See PLAN.md for milestones.
+See docs/PLAN.md for milestones.

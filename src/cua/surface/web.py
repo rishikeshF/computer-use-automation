@@ -8,17 +8,18 @@ on replay by the same description the model saw during discovery.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import Frame, Locator, Page, async_playwright
+from playwright.async_api import Frame, Locator, Page, Route, async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from cua.core.action import Action, Click, Fill, Navigate, Select
 from cua.core.locator import BBox, Css, FramePath, LocatorChain, TextAnchor
+from cua.core.url import strip_session
 from cua.surface.base import (
     Node,
     Observation,
@@ -35,6 +36,22 @@ _REF_ATTR = "data-cua-ref"
 _MAX_TEXT = 200
 _POLL_S = 0.25
 
+# Tags every element showing one of the given values, so the screenshot can mask it.
+_TAG_MASKS_JS = """(values) => {
+  const hit = (s) => !!s && values.some((v) => s.includes(v));
+  let count = 0;
+  for (const el of document.querySelectorAll("*")) {
+    const t = el.tagName;
+    const shows = t === "INPUT" || t === "TEXTAREA" ? hit(el.value)
+      : t === "SELECT" ? [...el.selectedOptions].some((o) => hit(o.text))
+      : [...el.childNodes].some((c) => c.nodeType === 3 && hit(c.textContent));
+    if (shows) { el.setAttribute("data-cua-mask", ""); count++; }
+  }
+  return count;
+}"""
+_CLEAR_MASKS_JS = """() => document.querySelectorAll("[data-cua-mask]")
+  .forEach((e) => e.removeAttribute("data-cua-mask"))"""
+
 
 class WebSurface:
     def __init__(self, page: Page, *, action_timeout_ms: int = 10_000, polite_delay_ms: int = 300):
@@ -44,25 +61,61 @@ class WebSurface:
         self._polite_delay_s = polite_delay_ms / 1000
         self._next_ref = 1  # refs are unique for the life of this surface, across navigations
         self._ref_frames: dict[str, Frame] = {}
+        self.blocked_navigations: list[str] = []  # evidence: loads the network guard stopped
 
     @classmethod
     @asynccontextmanager
     async def launch(
-        cls, *, headless: bool = True, slow_mo_ms: int = 0, polite_delay_ms: int = 300
+        cls,
+        *,
+        headless: bool = True,
+        slow_mo_ms: int = 0,
+        polite_delay_ms: int = 300,
+        allowed_url: Callable[[str], bool] | None = None,
     ) -> AsyncIterator[WebSurface]:
-        """Start a fresh browser and yield a surface on its single page. Closes everything after."""
+        """Start a fresh browser and yield a surface on its single page. Closes everything after.
+
+        Pass `allowed_url` (normally `policy.url_allowed`) to install the network guard."""
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
             try:
                 context = await browser.new_context(viewport={"width": 1280, "height": 900})
                 page = await context.new_page()
-                yield cls(page, polite_delay_ms=polite_delay_ms)
+                surface = cls(page, polite_delay_ms=polite_delay_ms)
+                if allowed_url is not None:
+                    await surface.guard_navigation(allowed_url)
+                yield surface
             finally:
                 await browser.close()
 
+    @property
+    def url(self) -> str:
+        return self._page.url
+
+    async def guard_navigation(self, allowed: Callable[[str], bool]) -> None:
+        """Abort any page or frame load the policy forbids, before the request leaves the browser.
+
+        Defense in depth under policy.check(): a link whose name looked harmless, a redirect, a
+        script, or a human in the handoff window still cannot load a denied page."""
+
+        async def handle(route: Route) -> None:
+            request = route.request
+            if request.resource_type == "document" and not allowed(request.url):
+                self.blocked_navigations.append(strip_session(request.url))
+                await route.abort("blockedbyclient")
+            else:
+                await route.fallback()
+
+        # Context level, so pages opened by target=_blank are covered too.
+        await self._page.context.route("**/*", handle)
+
     # ---- observe -------------------------------------------------------------------------------
 
-    async def observe(self, *, screenshot: bool = True) -> Observation:
+    async def observe(
+        self, *, screenshot: bool = True, mask_values: Sequence[str] = ()
+    ) -> Observation:
+        """Snapshot every frame. `mask_values` are sensitive strings (input params) to black out
+        wherever they appear in the screenshot; secret fields are always masked."""
         await self._settle()
         nodes: list[Node] = []
         skipped: list[str] = []
@@ -73,7 +126,7 @@ class WebSurface:
             except PlaywrightError:
                 # Frame detached or navigating mid-scan. Report it rather than fail the observation.
                 skipped.append("/".join(path) or "(top)")
-        shot = await self._screenshot() if screenshot else None
+        shot = await self._screenshot(mask_values) if screenshot else None
         return Observation(
             url=self._page.url,
             title=await self._page.title(),
@@ -113,11 +166,26 @@ class WebSurface:
             nodes.append(node)
         return nodes
 
-    async def _screenshot(self) -> bytes:
-        # Secret fields are masked in every frame. Sensitive params get masked by the caller's
-        # policy layer later (M2); this is the floor, not the whole story.
-        masks = [f.locator("input[type=password]") for f in self._page.frames]
-        return await self._page.screenshot(full_page=True, mask=masks)
+    async def _screenshot(self, mask_values: Sequence[str]) -> bytes | None:
+        """Full-page PNG with secret fields and every element showing a sensitive value masked.
+
+        Fails closed: if a frame cannot be tagged we cannot prove the values are hidden, so no
+        screenshot is taken. Missing evidence is better than leaked evidence."""
+        values = [v for v in mask_values if v]
+        frames = self._page.frames
+        try:
+            if values:
+                for f in frames:
+                    await f.evaluate(_TAG_MASKS_JS, values)
+            masks = [f.locator("input[type=password], [data-cua-mask]") for f in frames]
+            return await self._page.screenshot(full_page=True, mask=masks)
+        except PlaywrightError:
+            return None
+        finally:
+            if values:
+                for f in frames:
+                    with suppress(PlaywrightError):
+                        await f.evaluate(_CLEAR_MASKS_JS)
 
     # ---- resolve -------------------------------------------------------------------------------
 
@@ -156,7 +224,8 @@ class WebSurface:
                 StrategyAttempt(index=i, kind=strategy.kind, matches=len(refs), note=note)
             )
             if len(refs) == 1:
-                return Resolved(ref=refs[0], strategy_index=i, attempts=tuple(attempts))
+                node = next((n for n in nodes if n.ref == refs[0]), None)
+                return Resolved(ref=refs[0], strategy_index=i, attempts=tuple(attempts), node=node)
 
         reason = "ambiguous" if any(a.matches > 1 for a in attempts) else "not_found"
         return Unresolved(reason=reason, attempts=tuple(attempts))

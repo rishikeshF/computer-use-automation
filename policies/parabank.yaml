@@ -1,0 +1,59 @@
+# Safety policy for the public ParaBank demo.
+#
+# Paths are matched after normalization: lower-cased, percent-decoded, ";jsessionid=..." removed,
+# ".." collapsed. Deny rules win over allow rules. Unknown keys are rejected on load.
+
+name: parabank
+
+origins:
+  - https://parabank.parasoft.com
+
+allow_paths:
+  - /parabank
+  - /parabank/*
+
+deny_paths:
+  # Shared admin console: resets the database for everyone. Never touch it.
+  - /parabank/admin.htm
+  - /parabank/db.htm
+  - /parabank/initializedb.htm
+  - /parabank/cleandb.htm
+  - /parabank/jms.htm
+  # The SOAP/REST APIs. API integration is out of scope; this system drives the UI only.
+  - /parabank/services/*
+  - /parabank/services_proxy/*
+
+actions: [click, fill, select, navigate]
+
+# Controls that are never activated, even with approval.
+deny_controls:
+  - { role: link, name: "admin page" }
+
+risk:
+  # Activating these commits money movement or creates/changes records.
+  irreversible:
+    - { role: button, name: "transfer" }
+    - { role: button, name: "send payment" }
+    - { role: button, name: "open new account" }
+    - { role: button, name: "apply now" }
+    - { role: button, name: "update profile" }
+    - { role: button, name: "register" }
+    - { role: button, name: "send to customer care" }
+  # Buttons known to only read or authenticate.
+  reversible:
+    - { role: button, name: "log in" }
+    - { role: button, name: "find transactions" }
+    - { role: button, name: "find my login info" }
+  # Any other button: assume it commits something until a reviewer says otherwise.
+  default_button: irreversible
+
+# Input names that are always sensitive, whatever an artifact declares. Regex, case-insensitive,
+# matched anywhere in the name. Values are redacted in logs and masked in screenshots.
+sensitive_inputs:
+  - pass(word)?|pwd|pin
+  - user(name)?
+  - ssn|social
+  - account(_?id|_?number|_?no)?$|acct
+  - routing
+  - card
+  - token|secret

@@ -12,6 +12,7 @@ how they produce Nodes and execute Actions; recorded flows only ever see Nodes a
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -72,6 +73,8 @@ class Resolved(BaseModel):
     ref: str
     strategy_index: int  # 0 means the primary strategy matched; higher means a fallback fired
     attempts: tuple[StrategyAttempt, ...]
+    # The matched control as perceived. None only for a css match on a non-snapshot element.
+    node: Node | None = None
 
 
 class Unresolved(BaseModel):
@@ -89,7 +92,12 @@ class SurfaceError(Exception):
 
 
 class Surface(Protocol):
-    async def observe(self, *, screenshot: bool = True) -> Observation: ...
+    @property
+    def url(self) -> str: ...
+
+    async def observe(
+        self, *, screenshot: bool = True, mask_values: Sequence[str] = ()
+    ) -> Observation: ...
 
     async def resolve(
         self, chain: LocatorChain, *, timeout_ms: int = 0

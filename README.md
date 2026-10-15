@@ -26,5 +26,6 @@ PARABANK_PASSWORD=<its password>
 
 ```
 uv run python scripts/m1_check.py          # M1: snapshot of login page + accounts overview
+uv run pytest tests/core/test_policy.py    # M2: admin.htm and unapproved irreversible clicks blocked
 uv run pytest                              # offline unit tests
 ```
