@@ -86,19 +86,32 @@ class WebSurface:
         slow_mo_ms: int = 0,
         polite_delay_ms: int = 300,
         allowed_url: Callable[[str], bool] | None = None,
+        har: Path | None = None,
+        record_har: bool = False,
     ) -> AsyncIterator[WebSurface]:
         """Start a fresh browser and yield a surface on its single page. Closes everything after.
 
-        Pass `allowed_url` (normally `policy.url_allowed`) to install the network guard."""
+        Pass `allowed_url` (normally `policy.url_allowed`) to install the network guard.
+
+        Offline mode: with `har`, every request is answered from that recording and anything
+        not in it is aborted, so nothing reaches the network. With `record_har` too, the run
+        goes to the network as usual and the traffic is written to `har` when the browser
+        closes (raw: the caller must sanitize it before keeping it)."""
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
             try:
                 context = await browser.new_context(viewport={"width": 1280, "height": 900})
+                if har is not None:
+                    # Registered first, so the network guard and fault injection run before it.
+                    await context.route_from_har(
+                        har, update=record_har, update_content="embed", not_found="abort"
+                    )
                 page = await context.new_page()
                 surface = cls(page, polite_delay_ms=polite_delay_ms)
                 if allowed_url is not None:
                     await surface.guard_navigation(allowed_url)
                 yield surface
+                await context.close()  # writes the recording, when there is one
             finally:
                 await browser.close()
 

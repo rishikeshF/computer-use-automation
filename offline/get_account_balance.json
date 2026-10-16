@@ -1,0 +1,16 @@
+{
+  "har": "get_account_balance.har",
+  "capability": "get_account_balance@0.2.0",
+  "base_url": "https://parabank.parasoft.com/parabank",
+  "recorded_at": "2026-10-16T03:32:19+00:00",
+  "inputs": {
+    "account_id": "10000"
+  },
+  "preconditions": {
+    "ensure_session": {
+      "username": "demo-username",
+      "password": "demo-password"
+    }
+  },
+  "note": "Sensitive values are stand-ins. Offline: no network, no .env needed."
+}

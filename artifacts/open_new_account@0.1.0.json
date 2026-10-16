@@ -4,8 +4,8 @@
   "name": "open_new_account",
   "version": "0.1.0",
   "content_hash": "sha256:e662c7a44f6a7f65e0ca3c47ba27bf0c3c5aa6629ced9f68b1b57c5f23ce7bc9",
-  "status": "draft",
-  "status_note": "",
+  "status": "deprecated",
+  "status_note": "superseded by 0.2.0: adds funding_account_not_found and a short-text fallback for s4",
   "description": "Open a new account of the given type, funded from the given existing account, and read the new account number",
   "app": {
     "vendor": "parasoft/parabank",

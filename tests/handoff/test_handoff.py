@@ -108,7 +108,7 @@ async def test_operator_approves_the_irreversible_step(browser: Browser, tmp_pat
         assert "irreversible" in iv.reason and iv.url.endswith("/bank/open.htm")
         assert iv.screenshot and (ctl.dir / iv.screenshot).exists()
         assert GOOD not in iv.model_dump_json()  # the funding account is redacted
-        ctl.update(approve("tester"))
+        ctl.update(approve("tester", iv.id))
 
     out = await handoff_run(browser, tmp_path, operator)
     assert isinstance(out.result, Success), out.result
@@ -123,8 +123,8 @@ async def test_operator_approves_the_irreversible_step(browser: Browser, tmp_pat
 
 async def test_operator_declines(browser: Browser, tmp_path: Path) -> None:
     async def operator(ctl: ControlFile, _: WebSurface) -> None:
-        await waiting(ctl, "approval")
-        ctl.update(decline("tester"))
+        iv = await waiting(ctl, "approval")
+        ctl.update(decline("tester", iv.id))
 
     out = await handoff_run(browser, tmp_path, operator)
     assert isinstance(out.result, Failure) and out.result.kind == "policy_violation", out.result
@@ -188,8 +188,8 @@ async def test_automation_actions_are_not_captured_as_human(
     tell them apart, and while automation holds control nothing is logged as human."""
 
     async def operator(ctl: ControlFile, _: WebSurface) -> None:
-        await waiting(ctl, "approval")
-        ctl.update(approve("tester"))
+        iv = await waiting(ctl, "approval")
+        ctl.update(approve("tester", iv.id))
 
     out = await handoff_run(browser, tmp_path, operator)
     assert isinstance(out.result, Success), out.result
@@ -210,8 +210,8 @@ async def test_unasked_takeover_pauses_then_the_step_runs_again(
         iv = await waiting(ctl, "takeover")
         assert iv.step_id == "s1"
         ctl.update(release("tester"))
-        await waiting(ctl, "approval")
-        ctl.update(approve("tester"))
+        iv = await waiting(ctl, "approval")
+        ctl.update(approve("tester", iv.id))
 
     out = await handoff_run(browser, tmp_path, operator, taken_before_start=True)
     assert isinstance(out.result, Success), out.result

@@ -61,12 +61,30 @@ class Checkpoint(_Model):
     element_present: LocatorChain | None = None
 
 
+class MissingOption(_Model):
+    """A list (a select) that has loaded its options, but not this one. "Fund from account
+    {{funding_account_id}}" when that account is not in the customer's list."""
+
+    control: LocatorChain
+    option: str  # option text; may be a {{param}}
+
+
 class Condition(_Model):
     """A state of the screen, checked on replay. Holds when every part holds."""
 
     page: Checkpoint  # we are on the right page (so an absence below means something)
     present: tuple[LocatorChain, ...] = ()  # each resolves: the page has finished loading
     absent: tuple[LocatorChain, ...] = ()  # none resolves: the thing asked for is not there
+    # Each control resolves and has at least one option (it loaded), and the option is not one.
+    missing_options: tuple[MissingOption, ...] = ()
+
+    @model_serializer(mode="wrap")
+    def _omit_unused(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        # Added after the first artifacts were sealed; left out when empty so they keep their hash.
+        body: dict[str, object] = handler(self)
+        if not self.missing_options:
+            body.pop("missing_options", None)
+        return body
 
 
 class OutcomeDetector(_Model):

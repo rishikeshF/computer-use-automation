@@ -1,13 +1,14 @@
 """Replay end to end on the fake bank (tests/fakebank.py), with faults. No model, no network."""
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from playwright.async_api import Browser, async_playwright
 
+from cua.core.action import Action
 from cua.core.artifact import Capability
 from cua.core.faults import FaultPlan
 from cua.core.result import BusinessOutcome, Failure, NeedsHuman, RunResult, Success
@@ -26,6 +27,7 @@ from tests.fakebank import (
     OPEN_THEN_OVERVIEW,
     SESSION,
     Bank,
+    Flaky,
     open_session,
     replay_in,
 )
@@ -261,3 +263,125 @@ async def test_failed_page_load_after_commit_is_not_retried(
     assert result.step_id == "s6" and "not retrying" in result.reason
     assert injector is not None and len(injector.injected) == 1  # one load, no retry
     assert bank.creates == 1
+
+
+# ---- the surface breaks mid-action -------------------------------------------------------------
+
+
+def nth(kind: str, n: int) -> Callable[[Action], bool]:
+    """Matches the n-th action of this kind (1-based) the run performs."""
+    seen = 0
+
+    def match(action: Action) -> bool:
+        nonlocal seen
+        if action.kind != kind:
+            return False
+        seen += 1
+        return seen == n
+
+    return match
+
+
+async def test_surface_error_on_a_fill_is_a_failure_not_an_exception(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """Typing the username fails (the field went away). The run returns a Failure with the step
+    and what happened; nothing is raised to the caller."""
+    s = await open_session(
+        browser,
+        tmp_path,
+        Bank(),
+        sensitive={"account_id": GOOD},
+        wrap=lambda web: Flaky(web, nth("fill", 1), after=False),
+    )
+    try:
+        result = await replay_in(s, BALANCE, {"account_id": GOOD})
+    finally:
+        await s.web.page.context.close()
+    assert isinstance(result, Failure), result
+    assert result.kind == "precondition_failed"  # it broke inside ensure_session
+    assert result.observed is not None and "action_failed" in result.observed
+
+
+async def test_submit_that_fires_then_errors_needs_a_human_and_opens_one_account(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """The click on "Open New Account" reaches the bank, then the surface reports an error.
+    The step was marked committed before the click, so this is NeedsHuman, not a Failure a
+    caller would retry, and the account is opened exactly once."""
+    bank = Bank()
+    approved = OPEN.model_copy(update={"status": "approved"})
+    # Click 1 is Log In (ensure_session); click 2 is the irreversible submit.
+    s = await open_session(
+        browser,
+        tmp_path,
+        bank,
+        sensitive={"funding_account_id": GOOD},
+        wrap=lambda web: Flaky(web, nth("click", 2), after=True),
+    )
+    try:
+        result = await replay_in(s, approved, OPEN_INPUTS, confirm=True)
+    finally:
+        await s.web.page.context.close()
+    assert isinstance(result, NeedsHuman), result
+    assert result.step_id == "s4"
+    assert result.reason.startswith("action_failed after irreversible step s4 had run")
+    assert bank.creates == 1
+
+
+async def test_submit_that_errors_before_firing_still_needs_a_human(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """From outside, "failed before the click" and "failed after it" look the same. Committing
+    before the action means both are treated as "it may have happened"."""
+    bank = Bank()
+    approved = OPEN.model_copy(update={"status": "approved"})
+    s = await open_session(
+        browser,
+        tmp_path,
+        bank,
+        sensitive={"funding_account_id": GOOD},
+        wrap=lambda web: Flaky(web, nth("click", 2), after=False),
+    )
+    try:
+        result = await replay_in(s, approved, OPEN_INPUTS, confirm=True)
+    finally:
+        await s.web.page.context.close()
+    assert isinstance(result, NeedsHuman), result
+    assert bank.creates == 0  # it really did not happen; a person checks rather than guesses
+
+
+# ---- funding account not found -----------------------------------------------------------------
+
+
+async def run_open(browser: Browser, tmp_path: Path, bank: Bank, funding: str) -> RunResult:
+    approved = OPEN.model_copy(update={"status": "approved"})
+    s = await open_session(browser, tmp_path, bank, sensitive={"funding_account_id": funding})
+    try:
+        inputs = {**OPEN_INPUTS, "funding_account_id": funding}
+        return await replay_in(s, approved, inputs, confirm=True)
+    finally:
+        await s.web.page.context.close()
+
+
+async def test_unknown_funding_account_is_a_business_outcome(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """The funding list has loaded and does not offer the account. The run stops before the
+    select, so the irreversible submit is never reached."""
+    bank = Bank()
+    result = await run_open(browser, tmp_path, bank, BAD)
+    assert isinstance(result, BusinessOutcome), result
+    assert (result.code, result.step_id) == ("funding_account_not_found", "s3")
+    assert bank.creates == 0
+
+
+async def test_funding_list_loading_late_is_waited_for(browser: Browser, tmp_path: Path) -> None:
+    """An empty list is "not loaded yet", never "not found"."""
+    bank = Bank(options_after_ms=1500)
+    result = await run_open(browser, tmp_path, bank, GOOD)
+    assert isinstance(result, Success), result
+    assert bank.creates == 1
+    late = Bank(options_after_ms=1500)
+    result = await run_open(browser, tmp_path / "late", late, BAD)
+    assert isinstance(result, BusinessOutcome) and result.code == "funding_account_not_found"

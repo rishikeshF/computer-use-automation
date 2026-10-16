@@ -202,22 +202,33 @@ def release(by: str) -> Change:
     return change
 
 
-def approve(by: str) -> Change:
+def approve(by: str, intervention_id: str) -> Change:
+    """Yes to one named intervention. Naming it means a yes given while looking at one request
+    can never land on another (the run moved on, or paused somewhere else)."""
+
     def change(s: ControlState) -> ControlState:
-        if s.intervention is None:
-            raise ControlError("no intervention is waiting")
+        _check_waiting(s, intervention_id)
         return _answered(s, "approved", by)
 
     return change
 
 
-def decline(by: str) -> Change:
+def decline(by: str, intervention_id: str) -> Change:
     def change(s: ControlState) -> ControlState:
-        if s.intervention is None:
-            raise ControlError("no intervention is waiting")
+        _check_waiting(s, intervention_id)
         return _answered(s, "declined", by)
 
     return change
+
+
+def _check_waiting(s: ControlState, intervention_id: str) -> None:
+    if s.intervention is None:
+        raise ControlError("no intervention is waiting")
+    if s.intervention.id != intervention_id:
+        raise ControlError(
+            f"{intervention_id!r} is not the waiting intervention ({s.intervention.id!r}: "
+            f"{s.intervention.kind} at {s.intervention.step_id or '-'}); nothing changed"
+        )
 
 
 def _answered(

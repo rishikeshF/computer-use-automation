@@ -54,6 +54,9 @@ from cua.surface.matching import MAX_ANCHOR_GAP_PX, Matchable, distance, match_n
 
 # Text nodes that can anchor a control ("Amount:" left of an input).
 _ANCHOR_ROLES = {"text", "cell", "columnheader", "heading"}
+# An anchor longer than this is a paragraph, and paragraphs get reworded and re-priced. It also
+# gets a fallback that matches one plain sentence of it.
+_LONG_ANCHOR = 40
 # Loading a page is safe to repeat; a 500 or a dropped connection on the way in is often
 # transient. Clicks and typing are never retried blindly: they may already have taken effect.
 _NAV_RETRY = Retry(max=2, backoff_ms=1000)
@@ -360,7 +363,25 @@ def _anchor_candidates(node: Node, page: Sequence[Node]) -> list[TextAnchor]:
             and names.count(a.name) == 1
         ):
             found.append(TextAnchor(role=node.role, anchor=a.name, direction=direction))
+            short = _short_text(a.name)
+            if short and sum(short in n.name for n in page) == 1:
+                found.append(
+                    TextAnchor(role=node.role, anchor=short, direction=direction, contains=True)
+                )
     return found
+
+
+def _short_text(text: str) -> str | None:
+    """For a long text: its last sentence with no digits in it, else None.
+
+    "A minimum of $100.00 must be deposited ... opening. Please choose an existing account to
+    transfer funds into the new account." -> the second sentence. Amounts and dates are what
+    change; the instruction is what stays."""
+    if len(text) <= _LONG_ANCHOR:
+        return None
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text)]
+    plain = [s for s in sentences if len(s) >= 12 and not any(c.isdigit() for c in s)]
+    return plain[-1] if plain and plain[-1] != text else None
 
 
 def _param_strategy(s: Matchable, params: Mapping[str, str]) -> Matchable:

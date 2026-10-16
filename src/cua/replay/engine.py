@@ -127,6 +127,13 @@ async def replay(
         return await run.execute()
     except _Stop as stop:
         return stop.result
+    except SurfaceError as e:
+        # Last line: a surface error no step handled (the page closed mid-wait) is still a
+        # result, never an exception. After a commit it is NeedsHuman, like any other failure.
+        try:
+            run.fail("action_failed", observed=f"{e.kind}: {e.detail}")
+        except _Stop as stop:
+            return stop.result
 
 
 class _Run:
@@ -315,15 +322,38 @@ class _Run:
                 )
         if decision.verdict == "deny":
             self._fail("policy_violation", step, observed=decision.reason)
-        if decision.risk == "irreversible":
+
+    def _commit(self, step: Step, decision: Decision) -> None:
+        """Called after policy allowed the action and before it runs. An irreversible step counts
+        as done from here on: if the surface fails halfway, the effect may already be real."""
+        if self.committed is None and "irreversible" in (decision.risk, step.risk):
             self.committed = step
             self.log.event("committed", step=step.id, intent=step.intent)
 
     async def _do(self, step: Step, action: Action, *, approved: bool = False) -> Decision:
-        """Run one action through the guarded surface. If an operator took control unasked,
-        wait for them, then run the step again from the top (its action never ran)."""
+        """Run one action through the guarded surface and return policy's decision.
+
+        A surface error on a click, fill or select ends the run as a Failure (NeedsHuman once
+        anything irreversible ran). Page loads raise it on, so _navigate can retry them.
+        If an operator took control unasked, wait for them, then run the step again from the
+        top (its action never ran)."""
         try:
-            return await self.s.act(action, irreversible_approved=approved)
+            return await self.s.act(
+                action,
+                irreversible_approved=approved,
+                before_run=lambda d: self._commit(step, d),
+            )
+        except SurfaceError as e:
+            if isinstance(action, Navigate):
+                raise
+            await self._look(step)  # a session or app problem may explain it
+            self._fail(
+                "action_failed",
+                step,
+                expected=f"{action.kind} to complete",
+                observed=f"{e.kind}: {e.detail}",
+                screenshot=await self._shot(f"{step.id}-action-failed"),
+            )
         except ControlLost as e:
             answer = await self._pause(step, "takeover", f"an operator took control: {e}")
             if answer.human_irreversible:
@@ -520,20 +550,28 @@ class _Run:
             await asyncio.sleep(_POLL_S)
 
     async def _condition(self, c: Condition, obs: Observation, *, ready_only: bool) -> bool:
-        """Right page and every `present` guard there; unless `ready_only`, nothing `absent`."""
+        """Ready: right page, every `present` guard there, every list in `missing_options` has
+        loaded some options. Unless `ready_only`, also: nothing `absent` is there, and no list
+        offers its option."""
         params = self._all_params()
         if checkpoint_gap(c.page, obs, params) is not None:
             return False
         for chain in c.present:
             if not _exists(await self.s.resolve(chain.bind(params))):
                 return False
+        offered: list[tuple[str, tuple[str, ...]]] = []
+        for mo in c.missing_options:
+            found = await self.s.resolve(mo.control.bind(params))
+            if not isinstance(found, Resolved) or found.node is None or not found.node.options:
+                return False  # the list is not there, or still empty: too early to say "missing"
+            offered.append((render(mo.option, params), found.node.options))
         if ready_only:
             return True
         for chain in c.absent:
             found = await self.s.resolve(chain.bind(params))
             if not (isinstance(found, Unresolved) and found.reason == "not_found"):
                 return False
-        return True
+        return all(option not in options for option, options in offered)
 
     # ---- preconditions, recoveries, results ----------------------------------------------------
 
@@ -555,11 +593,15 @@ class _Run:
                     update={"step_id": f"{name}:{result.step_id}", "evidence": self._evidence()}
                 )
             )
-        if not isinstance(result, Success):
-            detail = getattr(result, "observed", None) or getattr(result, "reason", None)
+        if isinstance(result, Failure):
+            # Say how and where it broke inside the precondition, not just that it did.
             self._fail(
-                "precondition_failed", observed=f"{name}: {result.status} {detail or ''}".strip()
+                "precondition_failed",
+                observed=f"{name}: {result.kind} at {result.step_id or '-'}: {result.observed}",
+                screenshot=result.screenshot,
             )
+        if isinstance(result, NeedsHuman):
+            self._fail("precondition_failed", observed=f"{name}: needs a human: {result.reason}")
 
     def _check_inputs(self) -> None:
         declared = {i.name: i for i in self.cap.inputs}
@@ -620,6 +662,10 @@ class _Run:
             raw_outputs=dict(self.outputs),
             warnings=tuple(self.warnings),
         )
+
+    def fail(self, kind: FailureKind, *, observed: str) -> NoReturn:
+        """For replay(): end the run from outside a step."""
+        self._fail(kind, observed=observed)
 
     def _fail(
         self,

@@ -47,7 +47,7 @@ def match_nodes(strategy: Matchable, nodes: Sequence[Node]) -> list[Node]:
 
 def anchor_note(strategy: TextAnchor, nodes: Sequence[Node]) -> str | None:
     """Explain an anchor failure that is about the anchor text itself, not the target."""
-    count = sum(1 for n in nodes if n.name == strategy.anchor and n.role != strategy.role)
+    count = len(_anchors(strategy, nodes))
     if count == 0:
         return f"anchor text {strategy.anchor!r} not on screen"
     if count > 1:
@@ -55,8 +55,17 @@ def anchor_note(strategy: TextAnchor, nodes: Sequence[Node]) -> str | None:
     return None
 
 
+def _anchors(s: TextAnchor, nodes: Sequence[Node]) -> list[Node]:
+    """Nodes whose text is the anchor (or, with contains, includes it)."""
+    return [
+        n
+        for n in nodes
+        if n.role != s.role and (s.anchor in n.name if s.contains else n.name == s.anchor)
+    ]
+
+
 def _match_anchor(s: TextAnchor, nodes: Sequence[Node]) -> list[Node]:
-    anchors = [n for n in nodes if n.name == s.anchor and n.role != s.role]
+    anchors = _anchors(s, nodes)
     if len(anchors) != 1:
         return []  # no anchor, or an ambiguous anchor: refuse to guess
     a = anchors[0]

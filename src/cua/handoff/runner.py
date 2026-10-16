@@ -119,9 +119,9 @@ class HumanHandoff:
                 f"page:       {iv.url}",
                 f"screenshot: {run}/{iv.screenshot}" if iv.screenshot else "",
                 f"To answer ({what}):",
-                f"  uv run cua operator approve {run}",
+                f"  uv run cua operator approve {run} {iv.id}",
                 f"  uv run cua operator take {run}      then   uv run cua operator release {run}",
-                f"  uv run cua operator decline {run}",
+                f"  uv run cua operator decline {run} {iv.id}",
                 "",
             ]
         )

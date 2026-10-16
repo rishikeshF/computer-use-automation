@@ -20,6 +20,8 @@ import json
 import os
 import re
 import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -28,6 +30,7 @@ from dotenv import dotenv_values
 
 from cua.core.artifact import Capability
 from cua.core.faults import FaultPlan, parse_faults
+from cua.core.har import OfflinePack, leaks, sanitize, stand_ins
 from cua.core.policy import Policy
 from cua.core.result import BusinessOutcome, NeedsHuman, RunResult, Success
 from cua.core.runlog import RunLog, new_run_id, portable, utc_now
@@ -293,6 +296,16 @@ def replay_cmd(
     handoff_timeout: Annotated[
         float, typer.Option(help="Seconds to wait for a person before giving up.")
     ] = 1800.0,
+    offline: Annotated[
+        Path | None, typer.Option(help="Replay from a recorded pack (offline/*.json), no network.")
+    ] = None,
+    record_har: Annotated[
+        Path | None, typer.Option(help="Record this run as an offline pack (offline/<name>.json).")
+    ] = None,
+    scrub: Annotated[
+        list[str],
+        typer.Option(help="More text to remove from the recording (a name shown on screen)."),
+    ] = [],  # noqa: B006
     base_url: Annotated[str, typer.Option(help="App root.")] = PARABANK,
     policy: Annotated[Path, typer.Option(help="Policy file.")] = ROOT / "policies/parabank.yaml",
     runs_dir: Annotated[Path, typer.Option(help="Where the run log goes.")] = ROOT / "runs",
@@ -301,16 +314,27 @@ def replay_cmd(
 ) -> None:
     """Run an artifact with no model. Exit code: 0 success, 3 business outcome, 4 needs a human,
     1 failure. With --handoff a pause waits for a person instead of ending the run; add --headed
-    so they can act in the window."""
+    so they can act in the window. With --offline, the app is a recording: no network, no .env."""
     cap = load_artifact(artifact)
     try:
         faults = parse_faults(inject)
     except ValueError as e:
         raise typer.BadParameter(str(e)) from e
+    if offline and record_har:
+        raise typer.BadParameter("--offline and --record-har cannot be combined")
+    given = parse_inputs(input)
+    mode = Offline()
+    if offline is not None:
+        mode.pack = OfflinePack.model_validate_json(offline.read_text(encoding="utf-8"))
+        mode.har = offline.with_name(mode.pack.har)
+        base_url = mode.pack.base_url
+        given = {**mode.pack.inputs, **given}  # the recorded stand-ins, unless overridden
+    mode.record_to = record_har
+    mode.scrub = tuple(scrub)
     result = asyncio.run(
         _replay(
             cap,
-            parse_inputs(input),
+            given,
             faults,
             confirm,
             headed,
@@ -319,11 +343,22 @@ def replay_cmd(
             policy,
             runs_dir,
             artifacts_dir,
+            mode,
         )
     )
     typer.echo(json.dumps(json.loads(result.model_dump_json()), indent=2))
     codes = {Success: 0, BusinessOutcome: 3, NeedsHuman: 4}
     raise typer.Exit(codes.get(type(result), 1))
+
+
+@dataclass
+class Offline:
+    """How a replay talks to the app: live (all None), from a pack, or live while recording one."""
+
+    pack: OfflinePack | None = None
+    har: Path | None = None
+    record_to: Path | None = None  # the pack to write; the .har goes next to it
+    scrub: tuple[str, ...] = ()  # not inputs, but not to be kept either: the customer's name
 
 
 async def _replay(
@@ -337,6 +372,7 @@ async def _replay(
     policy_file: Path,
     runs_dir: Path,
     artifacts_dir: Path,
+    mode: Offline,
 ) -> RunResult:
     pol = Policy.load(policy_file)
     # Preconditions are the newest artifact of that name. Their inputs come from the environment
@@ -347,7 +383,10 @@ async def _replay(
         if found is None:
             raise typer.BadParameter(f"precondition {name!r} has no usable artifact")
         pre_cap = load_artifact(found)
-        pre_inputs = {i.name: env(f"PARABANK_{i.name.upper()}") or "" for i in pre_cap.inputs}
+        if mode.pack is not None:
+            pre_inputs = dict(mode.pack.preconditions.get(name, {}))  # recorded stand-ins
+        else:
+            pre_inputs = {i.name: env(f"PARABANK_{i.name.upper()}") or "" for i in pre_cap.inputs}
         pre[name] = (pre_cap, pre_inputs)
 
     declared = [i.name for i in cap.inputs if i.sensitive]
@@ -358,13 +397,23 @@ async def _replay(
         )
 
     run_id = new_run_id(f"replay-{cap.name}")
-    async with WebSurface.launch(headless=not headed, allowed_url=pol.url_allowed) as web:
+    # A recording starts raw (passwords, cookies). It goes to a temp dir, never into the repo,
+    # and only its sanitized copy is kept.
+    raw = Path(tempfile.mkdtemp(prefix="cua-har-")) / "raw.har" if mode.record_to else None
+    async with WebSurface.launch(
+        headless=not headed,
+        allowed_url=pol.url_allowed,
+        har=mode.har or raw,
+        record_har=raw is not None,
+    ) as web:
         # With a handoff, control.json says who acts; the surface checks it before each action.
         lease: Lease | None = None
         if handoff_timeout is not None:
             lease = Lease(ControlFile.create(runs_dir / run_id, run_id))
         surface = GuardedSurface(web, pol, sensitive=sensitive, gate=lease)
         log = RunLog(runs_dir, run_id, surface.redact, base=ROOT)
+        if mode.pack is not None and mode.har is not None:
+            log.event("offline", pack=mode.pack.har, recorded_at=mode.pack.recorded_at)
         desk: HumanHandoff | None = None
         if lease is not None and handoff_timeout is not None:
             capture = HumanCapture(
@@ -417,7 +466,54 @@ async def _replay(
             await logout(surface)
         log.event("result", result=result.model_dump(mode="json"))
         log.result(result)
+    if raw is not None and mode.record_to is not None:
+        pre_inputs_by_name = {name: inputs for name, (_, inputs) in pre.items()}
+        write_pack(
+            raw, mode.record_to, cap, base_url, inputs, pre_inputs_by_name, sensitive, mode.scrub
+        )
     return result
+
+
+def write_pack(
+    raw: Path,
+    pack_path: Path,
+    cap: Capability,
+    base_url: str,
+    inputs: dict[str, str],
+    pre_inputs: dict[str, dict[str, str]],
+    sensitive: dict[str, str],
+    scrub: tuple[str, ...],
+) -> None:
+    """Sanitize the raw recording into offline/<name>.har + .json, or write nothing."""
+    try:
+        text = raw.read_text(encoding="utf-8")
+        fakes = stand_ins(sensitive, text)
+        replace = {sensitive[n]: fakes[n] for n in sensitive} | {v: "Customer" for v in scrub}
+        clean = sanitize(json.loads(text), replace)
+        left = leaks(clean, [*sensitive.values(), *scrub])
+        if left:
+            typer.echo("Recording still holds sensitive values; nothing written.", err=True)
+            return
+        pack_path.parent.mkdir(parents=True, exist_ok=True)
+        har_path = pack_path.with_suffix(".har")
+        har_path.write_text(json.dumps(clean, indent=1, ensure_ascii=False), encoding="utf-8")
+        pack = OfflinePack(
+            har=har_path.name,
+            capability=cap.id,
+            base_url=base_url,
+            recorded_at=utc_now(),
+            inputs={k: fakes.get(k, v) for k, v in inputs.items()},
+            preconditions={
+                name: {k: fakes.get(k, v) for k, v in vals.items()}
+                for name, vals in pre_inputs.items()
+            },
+            note="Sensitive values are stand-ins. Offline: no network, no .env needed.",
+        )
+        pack_path.write_text(pack.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        typer.echo(f"Offline pack: {portable(pack_path, ROOT)} (+ {har_path.name})", err=True)
+    finally:
+        raw.unlink(missing_ok=True)
+        raw.parent.rmdir()
 
 
 @app.command("seal")
@@ -470,7 +566,7 @@ def op_list(runs_dir: RunsDir = ROOT / "runs") -> None:
         if s.intervention is None and s.owner == "automation":
             continue
         iv = s.intervention
-        what = f"{iv.kind} at {iv.step_id or '-'}: {iv.reason}" if iv else "no request"
+        what = f"{iv.id}: {iv.kind} at {iv.step_id or '-'}: {iv.reason}" if iv else "no request"
         typer.echo(f"{s.run_id}  held by {s.holder}  epoch {s.epoch}  {what}")
 
 
@@ -487,15 +583,25 @@ def op_release(run: str, runs_dir: RunsDir = ROOT / "runs", by: By = "operator")
 
 
 @operator.command("approve")
-def op_approve(run: str, runs_dir: RunsDir = ROOT / "runs", by: By = "operator") -> None:
-    """Approve the waiting step. Automation does it, and only that step."""
-    operate(run, runs_dir, control.approve(by), "approved")
+def op_approve(
+    run: str,
+    intervention: Annotated[str, typer.Argument(help="Id of the request, e.g. s5-1.")],
+    runs_dir: RunsDir = ROOT / "runs",
+    by: By = "operator",
+) -> None:
+    """Approve the waiting request by its id. Automation does that step, and only that step."""
+    operate(run, runs_dir, control.approve(by, intervention), "approved")
 
 
 @operator.command("decline")
-def op_decline(run: str, runs_dir: RunsDir = ROOT / "runs", by: By = "operator") -> None:
-    """Say no. The run ends without doing the step."""
-    operate(run, runs_dir, control.decline(by), "declined")
+def op_decline(
+    run: str,
+    intervention: Annotated[str, typer.Argument(help="Id of the request, e.g. s5-1.")],
+    runs_dir: RunsDir = ROOT / "runs",
+    by: By = "operator",
+) -> None:
+    """Say no to the waiting request by its id. The run ends without doing the step."""
+    operate(run, runs_dir, control.decline(by, intervention), "declined")
 
 
 if __name__ == "__main__":

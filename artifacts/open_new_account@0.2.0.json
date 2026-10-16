@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "id": "open_new_account@0.2.0",
+  "name": "open_new_account",
+  "version": "0.2.0",
+  "content_hash": "sha256:59457efeccef090097cb3c36209dc26cc7328d77d9751b40abc36f7f3cb54487",
+  "status": "draft",
+  "status_note": "",
+  "description": "Open a new account of the given type, funded from the given existing account, and read the new account number",
+  "app": {
+    "vendor": "parasoft/parabank",
+    "app_version_fingerprint": "nav:8011e223e21ddba4",
+    "base_url_param": "base_url"
+  },
+  "inputs": [
+    {
+      "name": "account_type",
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "pattern": null,
+      "description": ""
+    },
+    {
+      "name": "funding_account_id",
+      "type": "string",
+      "required": true,
+      "sensitive": true,
+      "pattern": null,
+      "description": ""
+    }
+  ],
+  "outputs": [
+    {
+      "name": "new_account_id",
+      "type": "string",
+      "unit": null,
+      "source_step": "s6"
+    }
+  ],
+  "preconditions": [
+    "ensure_session"
+  ],
+  "steps": [
+    {
+      "id": "s1",
+      "intent": "Open the Account Services page",
+      "action": "navigate",
+      "target": null,
+      "value": "{{base_url}}/overview.htm",
+      "pre": null,
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Account Services",
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 2,
+        "backoff_ms": 1000,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s2",
+      "intent": "Open the new account form",
+      "action": "click",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "role_name",
+            "role": "link",
+            "name": "Open New Account"
+          },
+          {
+            "kind": "text_anchor",
+            "role": "link",
+            "anchor": "Account Services",
+            "direction": "below"
+          }
+        ]
+      },
+      "value": null,
+      "pre": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Account Services",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": "Open New Account",
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s3",
+      "intent": "Choose account type",
+      "action": "select",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "label_text",
+            "role": "combobox",
+            "label": "What type of Account would you like to open?"
+          },
+          {
+            "kind": "text_anchor",
+            "role": "combobox",
+            "anchor": "What type of Account would you like to open?",
+            "direction": "below"
+          }
+        ]
+      },
+      "value": {
+        "param": "account_type"
+      },
+      "pre": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": "Open New Account",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "reversible",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s4",
+      "intent": "Choose funding account",
+      "action": "select",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "text_anchor",
+            "role": "combobox",
+            "anchor": "A minimum of $100.00 must be deposited into this account at time of opening. Please choose an existing account to transfer funds into the new account.",
+            "direction": "below"
+          },
+          {
+            "kind": "text_anchor",
+            "role": "combobox",
+            "anchor": "Please choose an existing account to transfer funds into the new account.",
+            "direction": "below",
+            "contains": true
+          }
+        ]
+      },
+      "value": {
+        "param": "funding_account_id"
+      },
+      "pre": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": "Open New Account",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "reversible",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s5",
+      "intent": "Submit new account",
+      "action": "click",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "role_name",
+            "role": "button",
+            "name": "Open New Account"
+          }
+        ]
+      },
+      "value": null,
+      "pre": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": "Open New Account",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": "Account Opened!",
+        "element_present": null
+      },
+      "risk": "irreversible",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s6",
+      "intent": "Read new account number",
+      "action": "extract",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "text_anchor",
+            "role": "link",
+            "anchor": "Your new account number:",
+            "direction": "right_of"
+          },
+          {
+            "kind": "text_anchor",
+            "role": "link",
+            "anchor": "Congratulations, your account is now open.",
+            "direction": "below"
+          }
+        ]
+      },
+      "value": "new_account_id",
+      "pre": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": "Account Opened!",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/openaccount.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    }
+  ],
+  "success": {
+    "url_pattern": "/parabank/openaccount.htm",
+    "landmark_text": "Account Opened!",
+    "element_present": null
+  },
+  "outcomes": [
+    {
+      "code": "funding_account_not_found",
+      "message": "The funding account is not one of this customer's accounts.",
+      "check_before": [
+        "s4"
+      ],
+      "when": {
+        "page": {
+          "url_pattern": "/parabank/openaccount.htm",
+          "landmark_text": "Open New Account",
+          "element_present": null
+        },
+        "present": [],
+        "absent": [],
+        "missing_options": [
+          {
+            "control": {
+              "frame": [],
+              "strategies": [
+                {
+                  "kind": "text_anchor",
+                  "role": "combobox",
+                  "anchor": "A minimum of $100.00 must be deposited into this account at time of opening. Please choose an existing account to transfer funds into the new account.",
+                  "direction": "below"
+                },
+                {
+                  "kind": "text_anchor",
+                  "role": "combobox",
+                  "anchor": "Please choose an existing account to transfer funds into the new account.",
+                  "direction": "below",
+                  "contains": true
+                }
+              ]
+            },
+            "option": "{{funding_account_id}}"
+          }
+        ]
+      },
+      "rationale": "Added in review. The funding list only offers the signed-in customer's accounts, filled in by a request after the page loads. Once it has at least one option, a funding_account_id it does not offer cannot be used. Checked before s4, so the run stops before the irreversible submit in s5."
+    }
+  ],
+  "recovery": [],
+  "risk": "irreversible",
+  "provenance": {
+    "discovered_at": "2026-10-16T02:51:19+00:00",
+    "model": "claude-sonnet-5-5",
+    "run_id": "2026-10-16T02-50-40Z-discover-open_new_account-b5e0",
+    "goal": "Open a new account of the given type, funded from the given existing account, and read the new account number",
+    "reviewed_by": null
+  },
+  "overrides": {}
+}

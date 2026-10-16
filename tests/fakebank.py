@@ -11,17 +11,20 @@ It copies the real one where it matters:
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from playwright.async_api import Browser, Route
 
+from cua.core.action import Action
 from cua.core.artifact import (
     AppInfo,
     Capability,
     Checkpoint,
     Condition,
     InputSpec,
+    MissingOption,
     OutcomeDetector,
     OutputSpec,
     ParamValue,
@@ -35,6 +38,7 @@ from cua.core.policy import Policy, PolicyConfig
 from cua.core.result import RunResult
 from cua.core.runlog import RunLog
 from cua.replay.engine import Handoff, ReplayOptions, replay
+from cua.surface.base import Observation, Resolved, SurfaceError, Unresolved
 from cua.surface.faults import WebFaults
 from cua.surface.guarded import ControlGate, GuardedSurface
 from cua.surface.web import WebSurface
@@ -52,6 +56,7 @@ class Bank:
     rows_after_ms: int = 0  # -1: the rows never arrive
     balance_header: str = "Balance*"
     expire_on_create: bool = False  # the session dies right after an account is opened
+    options_after_ms: int = 0  # the funding list fills in late, like ParaBank's XHR
     creates: int = 0  # accounts opened: the irreversible action, counted server side
 
 
@@ -99,13 +104,17 @@ def open_account(bank: Bank) -> str:
       <p>What type of Account would you like to open?</p>
       <select id="type"><option>CHECKING</option><option>SAVINGS</option></select>
       <p>Choose the account that funds it.</p>
-      <select id="from"><option>{GOOD}</option><option>54321</option></select>
+      <select id="from"></select>
       <div><input type="button" value="Open New Account" onclick="openIt()"></div>
       <div id="result" style="display:none">
         <h1>Account Opened!</h1>
         <p>Your new account number: <a id="newId" href="#">?</a></p>
       </div>
       <script>
+        setTimeout(() => {{
+          document.getElementById('from').innerHTML =
+            '<option>{GOOD}</option><option>54321</option>';
+        }}, {bank.options_after_ms});
         async function openIt() {{
           const id = await (await fetch('/bank/create', {{method: 'POST'}})).text();
           document.getElementById('newId').textContent = id;
@@ -291,6 +300,9 @@ SESSION = Capability(
 ).sealed()
 
 
+FUNDING_LIST = LocatorChain(
+    strategies=(LabelText(role="combobox", label="Choose the account that funds it."),)
+)
 OPEN_CP = Checkpoint(url_pattern="/bank/open.htm", landmark_text="Open New Account")
 OPENED_CP = Checkpoint(url_pattern="/bank/open.htm", landmark_text="Account Opened!")
 OPEN_STEPS = (
@@ -319,7 +331,7 @@ OPEN_STEPS = (
         id="s3",
         intent="Choose the funding account",
         action="select",
-        target=chain(LabelText(role="combobox", label="Choose the account that funds it.")),
+        target=FUNDING_LIST,
         value=ParamValue(param="funding_account_id"),
         pre=OPEN_CP,
         risk="reversible",
@@ -357,6 +369,22 @@ OPEN = Capability(
     outputs=(OutputSpec(name="new_account_id", source_step="s5"),),
     preconditions=("ensure_session",),
     steps=OPEN_STEPS,
+    outcomes=(
+        OutcomeDetector(
+            code="funding_account_not_found",
+            message="The funding account is not one of this customer's accounts.",
+            check_before=("s3",),
+            when=Condition(
+                page=OPEN_CP,
+                missing_options=(
+                    MissingOption(
+                        control=FUNDING_LIST,
+                        option="{{funding_account_id}}",
+                    ),
+                ),
+            ),
+        ),
+    ),
     success=OPENED_CP,
     risk="irreversible",
     provenance=PROV,
@@ -383,6 +411,40 @@ OPEN_THEN_OVERVIEW = OPEN.model_copy(
 ).sealed()
 
 
+class Flaky:
+    """A surface that breaks on one chosen action, the way a real browser can.
+
+    after=True runs the action first, then raises: the click landed and the page never answered
+    (connection reset, a navigation that hung). after=False raises without running it."""
+
+    def __init__(self, inner: WebSurface, breaks: Callable[[Action], bool], *, after: bool):
+        self._inner = inner
+        self._breaks = breaks
+        self._after = after
+        self.broke = False
+
+    @property
+    def url(self) -> str:
+        return self._inner.url
+
+    async def observe(
+        self, *, screenshot: bool = True, mask_values: Sequence[str] = ()
+    ) -> Observation:
+        return await self._inner.observe(screenshot=screenshot, mask_values=mask_values)
+
+    async def resolve(self, chain: LocatorChain, *, timeout_ms: int = 0) -> Resolved | Unresolved:
+        return await self._inner.resolve(chain, timeout_ms=timeout_ms)
+
+    async def act(self, action: Action) -> None:
+        if self.broke or not self._breaks(action):
+            await self._inner.act(action)
+            return
+        self.broke = True
+        if self._after:
+            await self._inner.act(action)
+        raise SurfaceError("not_actionable", "connection reset while the page was answering")
+
+
 @dataclass
 class Session:
     """One test's browser, surface and log. `web` is the raw surface (the "human" uses it)."""
@@ -401,12 +463,14 @@ async def open_session(
     sensitive: dict[str, str],
     faults: FaultPlan | None = None,
     gate: ControlGate | None = None,
+    wrap: Callable[[WebSurface], Flaky] | None = None,
 ) -> Session:
     context = await browser.new_context()
     await context.route(f"{ORIGIN}/**", handler(bank))
     web = WebSurface(await context.new_page(), polite_delay_ms=0, action_timeout_ms=2_000)
     await web.guard_navigation(POLICY.url_allowed)
-    surface = GuardedSurface(web, POLICY, sensitive={**sensitive, **CREDS}, gate=gate)
+    inner = wrap(web) if wrap else web
+    surface = GuardedSurface(inner, POLICY, sensitive={**sensitive, **CREDS}, gate=gate)
     log = RunLog(tmp_path, "run", surface.redact, base=tmp_path)
     injector = None
     if faults is not None:

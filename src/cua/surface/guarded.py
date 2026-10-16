@@ -13,7 +13,7 @@ way the action did not run, so ignoring the return value is still safe.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Protocol
 
 from cua.core.action import Action, Navigate
@@ -69,8 +69,18 @@ class GuardedSurface:
             self._seen[result.ref] = result.node
         return result
 
-    async def act(self, action: Action, *, irreversible_approved: bool = False) -> Decision:
-        """Check the action against policy, run it only if allowed, return the decision."""
+    async def act(
+        self,
+        action: Action,
+        *,
+        irreversible_approved: bool = False,
+        before_run: Callable[[Decision], None] | None = None,
+    ) -> Decision:
+        """Check the action against policy, run it only if allowed, return the decision.
+
+        `before_run` is called once the action is allowed, just before it runs. Replay uses it to
+        mark an irreversible step as committed first: if the surface then raises halfway (the
+        click landed, the page never answered), the run already knows it may have happened."""
         if self._gate is not None:
             self._gate.check()  # before policy: a person at the controls outranks any verdict
         target = None if isinstance(action, Navigate) else self._seen.get(action.ref)
@@ -78,5 +88,7 @@ class GuardedSurface:
             action, url=self.url, target=target, irreversible_approved=irreversible_approved
         )
         if decision.allowed:
+            if before_run is not None:
+                before_run(decision)
             await self._surface.act(action)
         return decision

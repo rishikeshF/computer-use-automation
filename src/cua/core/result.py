@@ -64,6 +64,7 @@ class NeedsHuman(_Model):
 
 FailureKind = Literal[
     "locator_not_found",
+    "action_failed",  # the control was found, but clicking or typing into it did not complete
     "checkpoint_mismatch",
     "app_error",
     "policy_violation",

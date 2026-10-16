@@ -87,3 +87,21 @@ def test_text_anchor_ignores_candidates_beyond_the_gap_cap() -> None:
         node("i", "textbox", bbox=(300, 0, 100, 20)),  # 240 px away: not labelled by "Amount"
     ]
     assert match_nodes(TextAnchor(role="textbox", anchor="Amount", direction="right_of"), far) == []
+
+
+def test_text_anchor_can_match_part_of_a_longer_text() -> None:
+    nodes = [
+        node(
+            "p",
+            "text",
+            "A minimum of $100.00 must be deposited. Please choose an existing account.",
+            bbox=(0, 0, 400, 30),
+        ),
+        node("c", "combobox", bbox=(0, 40, 140, 18)),
+    ]
+    short = "Please choose an existing account."
+    exact = TextAnchor(role="combobox", anchor=short, direction="below")
+    part = TextAnchor(role="combobox", anchor=short, direction="below", contains=True)
+    assert match_nodes(exact, nodes) == []
+    assert [n.ref for n in match_nodes(part, nodes)] == ["c"]
+    assert "contains" not in exact.model_dump()  # left out when False: old hashes stay valid

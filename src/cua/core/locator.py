@@ -11,7 +11,9 @@ Strategies, most robust first:
                    ("textbox labelled 'Username'"; legacy forms rarely use <label>)
   3. TableCell     role + the row and column it sits in ("cell in row 'Balance:'"); how a
                    value is read without recording the value itself
-  4. TextAnchor    role + direction from a unique piece of text ("combobox right of 'Type'")
+  4. TextAnchor    role + direction from a unique piece of text ("combobox right of 'Type'").
+                   With contains=True the anchor is a short part of a longer text, so a reworded
+                   or re-priced paragraph ("A minimum of $100.00 ...") can still be found
   5. Css           last resort, flagged as fragile in review
   6. BBox          screen position; only meaningful for surfaces with no element tree
 
@@ -24,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from cua.core.template import render
 
@@ -73,6 +75,15 @@ class TextAnchor(_Strategy):
     role: str
     anchor: str
     direction: Literal["right_of", "left_of", "below", "above"]
+    contains: bool = False  # anchor is part of the text, not all of it
+
+    @model_serializer(mode="wrap")
+    def _omit_default(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        # Added after the first artifacts were sealed; left out when False so they keep their hash.
+        body: dict[str, object] = handler(self)
+        if not self.contains:
+            body.pop("contains", None)
+        return body
 
 
 class Css(_Strategy):

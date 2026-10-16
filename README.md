@@ -2,20 +2,23 @@
 
 A computer-use automation system. An LLM discovers how to do a task in a legacy web app once.
 The run becomes a typed, versioned capability artifact. Production replays that artifact
-deterministically, with no LLM in the loop.
+deterministically, with no LLM in the loop. When it cannot go on safely, a person takes over the
+same live browser and hands it back.
 
-Target: the public [ParaBank](https://parabank.parasoft.com/parabank/) demo bank.
-
-Work in progress. See `docs/PLAN.md` for milestones.
+Target: the public [ParaBank](https://parabank.parasoft.com/parabank/) demo bank (built by
+Parasoft for test automation). Design write-up: [REPORT.md](REPORT.md).
 
 ## Setup
+
+Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ```
 uv sync
 uv run playwright install chromium
 ```
 
-Create `.env` in the repo root (never committed):
+That is all the offline demo needs. For live runs, create `.env` in the repo root (never
+committed):
 
 ```
 PARABANK_USERNAME=<your ParaBank test user>
@@ -24,80 +27,122 @@ ANTHROPIC_API_KEY=<key, only needed for discovery>
 ANTHROPIC_WORKSPACE_ID=<only if the key is not scoped to one workspace>
 ```
 
-The public ParaBank database resets from time to time. If login fails, register the test user
-again on the site (fake data only) and update `.env`. Account ids change after a reset.
+Register the test user on the ParaBank site with fake data. The public database resets from time
+to time; then sign-in returns `invalid_credentials` and you register again. Account ids change
+after a reset.
 
-## Milestone checks
+## Demo in five minutes, offline
 
-```
-uv run python scripts/m1_check.py          # M1: snapshot of login page + accounts overview
-uv run pytest tests/core/test_policy.py    # M2: admin.htm and unapproved irreversible clicks blocked
-uv run pytest                              # offline unit tests
-```
-
-M3, discovery on the live site (one model run, writes a draft artifact and its evidence):
-
-```
-uv run cua discover --name get_account_balance --login     --goal "Find the balance and the available amount of the given account"     --input account_id=<an account id of the test user>     --output balance --output available     --runs-dir evidence
-```
-
-The model never sees sensitive values: `account_id` shows on screen as `[REDACTED:account_id]`
-and the model types inputs as `{{account_id}}`. The draft lands in
-`artifacts/get_account_balance@0.1.0.json`, the redacted log and screenshots in `evidence/<run>/`.
-Irreversible clicks (Transfer, Open New Account, ...) stop and ask on the terminal first.
-
-M4, replay with no model. Signs in by replaying `ensure_session` (credentials from `.env`):
+No network, no `.env`, no model. `offline/get_account_balance.har` is a recorded live run with
+every sensitive value replaced by a stand-in; `offline/get_account_balance.json` says which.
 
 ```
 A=artifacts/get_account_balance@0.2.0.json
-uv run cua replay $A --input account_id=<id> --runs-dir evidence                       # success
-uv run cua replay $A --input account_id=12345 --runs-dir evidence                      # account_not_found
-uv run cua replay $A --input account_id=<id> --inject http500 --runs-dir evidence      # retried
-uv run cua replay $A --input account_id=<id> --inject session_expire --runs-dir evidence  # re-login
+P=offline/get_account_balance.json
+uv run cua replay $A --offline $P                            # success: balance 515.50
+uv run cua replay $A --offline $P --input account_id=12345   # account_not_found (exit 3)
+uv run cua replay $A --offline $P --inject http500           # page load retried, then success
+uv run cua replay $A --offline $P --inject http500:3         # retries used up: app_error (exit 1)
+uv run cua replay $A --offline $P --inject dialog            # alert dismissed and noted
+uv run pytest                                                # 160 tests, all offline
 ```
 
-Exit codes: 0 success, 3 business outcome, 4 needs a human, 1 failure. Faults run in our own
-browser only (`slow[:ms]`, `http500[:n]`, `session_expire`, `dialog`); the app sees no extra load.
+Each run prints its result and writes a redacted log and screenshots to `runs/<run id>/`.
+Exit codes: 0 success, 3 business outcome, 4 needs a person, 1 failure.
 
-More M4 evidence: `--inject http500:3` (retries used up, ends as `app_error` with a screenshot),
-`--inject dialog` and `--inject slow`. A wrong password ends as the business outcome
-`invalid_credentials` (exit 3), not as an app error:
+## Demo path, live
 
-```
-uv run cua replay artifacts/ensure_session@0.2.0.json --input username=nobody --input password=x --runs-dir evidence
-```
-
-Rules after an irreversible step (money moved, an account opened): the run never signs in again,
-rewinds, retries a page load or clicks again. Anything that goes wrong after that point ends as
-`needs_human`, naming the step that committed.
-
-Review status lives in each artifact: `draft`, `approved` or `deprecated` (refused by replay,
-with a note saying why). It is not part of `content_hash`, and every result records which
-artifact ran, its status and its hash. After a reviewer edits a draft (for example, adding an
-outcome), `uv run cua seal <artifact>` recomputes the hash; approved artifacts are never re-sealed.
-
-M5, human handoff. A draft irreversible capability pauses at its irreversible step and waits for
-a person, with the browser kept open:
+**1. Discover.** The model works out the task once, under policy (one model run):
 
 ```
-uv run cua replay artifacts/open_new_account@0.1.0.json \
+uv run cua discover --name get_account_balance --login \
+    --goal "Find the balance and the available amount of the given account" \
+    --input account_id=<an account id of the test user> \
+    --output balance --output available --runs-dir evidence
+```
+
+The model never sees sensitive values: `account_id` shows on screen as `[REDACTED:account_id]`
+and the model types inputs as `{{account_id}}`. The draft artifact lands in `artifacts/`, the
+redacted log and screenshots in `evidence/<run>/`.
+
+**2. Replay** with no model. Signs in first by replaying `ensure_session` (credentials from
+`.env`):
+
+```
+A=artifacts/get_account_balance@0.2.0.json
+uv run cua replay $A --input account_id=<id> --runs-dir evidence                          # success
+uv run cua replay $A --input account_id=12345 --runs-dir evidence                         # account_not_found
+uv run cua replay $A --input account_id=<id> --inject session_expire --runs-dir evidence  # signs in again
+uv run cua replay artifacts/ensure_session@0.2.0.json \
+    --input username=nobody --input password=x --runs-dir evidence                        # invalid_credentials
+```
+
+Faults are injected in our own browser only (`slow[:ms]`, `http500[:n]`, `session_expire`,
+`dialog`); the app sees no extra load.
+
+**3. Hand off to a person.** `open_new_account` has an irreversible step. Unless the artifact is
+approved and the caller passes `--confirm`, that step pauses for a person, with the browser kept
+open:
+
+```
+uv run cua replay artifacts/open_new_account@0.2.0.json \
     --input account_type=SAVINGS --input funding_account_id=<id> \
     --headed --handoff --runs-dir evidence
 ```
 
-The run prints what it needs (capability, step, reason, page, masked screenshot). In another
-terminal:
+The run prints the request (capability, step, reason, page, masked screenshot) and its id. In
+another terminal:
 
 ```
 uv run cua operator list --runs-dir evidence
-uv run cua operator approve <run> --by <name>     # automation does this one step
-uv run cua operator take <run> --by <name>        # or do it yourself in the window...
-uv run cua operator release <run> --by <name>     # ...then hand back; the run re-checks the page
-uv run cua operator decline <run> --by <name>     # or say no
+uv run cua operator approve <run> <request id> --by <name>   # automation does this one step
+uv run cua operator take <run> --by <name>                   # or do it yourself in the window,
+uv run cua operator release <run> --by <name>                # then hand back; the run re-checks
+uv run cua operator decline <run> <request id> --by <name>   # or say no
 ```
 
-`<run>` is the run directory or any unique part of its id. Control lives in
-`<run>/control.json` (owner and epoch). Automation checks it before every action, so a `take` at
-any moment stops the run before its next action. While a person holds control, their clicks and
-selections are logged with their risk (typed text is never logged). Discovery takes `--handoff`
-too, to ask for approvals this way instead of on the terminal.
+`<run>` is the run directory or any unique part of its id. Approve and decline name the request
+they answer, so a yes given while looking at one request can never land on another.
+
+Discovery can ask for its approvals the same way: add `--handoff` to `cua discover`.
+
+## Rules worth knowing
+
+- Every action, in discovery, replay and handoff, goes through `policies/parabank.yaml` first.
+  The admin page is denied; buttons that move money or create records are irreversible.
+- After an irreversible step has run, a replay never signs in again, rewinds, retries or clicks
+  again. Anything that goes wrong after that point ends as `needs_human`.
+- Artifacts carry a review status: `draft`, `approved` or `deprecated` (refused by replay). It
+  is not part of `content_hash`; every result records the artifact id, status and hash. After a
+  reviewer edits a draft, `uv run cua seal <artifact>` recomputes the hash.
+- Secrets never reach disk: logs are redacted, screenshots masked, artifacts hold `{{param}}`
+  placeholders, and offline recordings are sanitized and checked before they are written.
+
+## Recording a new offline pack
+
+From a live run, with a working `.env`:
+
+```
+uv run cua replay artifacts/get_account_balance@0.2.0.json --input account_id=<id> \
+    --record-har offline/get_account_balance.json --scrub <surname shown on the page>
+```
+
+The raw recording goes to a temp directory and is deleted. Only the sanitized copy is written,
+and only if none of the real values (inputs, credentials, `--scrub` text) is left in it.
+
+## Layout
+
+```
+src/cua/
+  core/       artifact schema, results, policy, redaction, run log, offline packs (no browser)
+  surface/    the only code that touches Playwright: snapshot, locators, faults, human capture
+  discover/   the model loop and the recorder that turns its trace into an artifact
+  replay/     the deterministic engine and the app-level detectors
+  handoff/    the control lease (control.json) and the run's side of a handoff
+  llm/        the model client, used by discovery only
+  cli.py      discover, replay, operator, seal
+artifacts/    capability artifacts, versioned
+evidence/     committed demo runs (discovery, replays, failures, handoff)
+offline/      recorded, sanitized app traffic for offline replay
+policies/     the safety policy
+```

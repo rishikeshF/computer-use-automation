@@ -1,0 +1,19 @@
+{
+  "status": "business_outcome",
+  "code": "funding_account_not_found",
+  "message": "The funding account is not one of this customer's accounts.",
+  "step_id": "s4",
+  "evidence": {
+    "run_id": "2026-10-16T03-30-45Z-replay-open_new_account-9900",
+    "dir": "evidence/2026-10-16T03-30-45Z-replay-open_new_account-9900",
+    "artifact": {
+      "id": "open_new_account@0.2.0",
+      "status": "draft",
+      "content_hash": "sha256:59457efeccef090097cb3c36209dc26cc7328d77d9751b40abc36f7f3cb54487"
+    },
+    "recoveries": [],
+    "interventions": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

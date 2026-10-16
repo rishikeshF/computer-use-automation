@@ -325,3 +325,32 @@ def test_distant_text_is_not_an_anchor() -> None:
     chain, notes = locator_for(page[1], page, {})
     assert not any(isinstance(s, TextAnchor) for s in chain.strategies)
     assert notes  # nothing could be proven, and the review notes say so
+
+
+# ParaBank's open-account form: the funding list has no label, only a paragraph above it.
+FUNDING = (
+    n(
+        "p",
+        "text",
+        "A minimum of $100.00 must be deposited into this account at time of opening. "
+        "Please choose an existing account to transfer funds into the new account.",
+        bbox=(488, 383, 482, 34),
+    ),
+    n("f", "combobox", options=("13344",), bbox=(488, 430, 140, 18)),
+    n("b", "button", "Open New Account", bbox=(488, 468, 139, 19)),
+)
+
+
+def test_long_anchor_gets_a_short_text_fallback() -> None:
+    """The paragraph holds an amount, which is what changes first. The fallback keeps the plain
+    sentence that says what the list is for."""
+    chain, _ = locator_for(FUNDING[1], FUNDING, {})
+    assert chain.strategies == (
+        TextAnchor(role="combobox", anchor=FUNDING[0].name, direction="below"),
+        TextAnchor(
+            role="combobox",
+            anchor="Please choose an existing account to transfer funds into the new account.",
+            direction="below",
+            contains=True,
+        ),
+    )
