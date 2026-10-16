@@ -1,216 +1,161 @@
 # REPORT
 
 Target: the public ParaBank demo bank, a server-rendered JSP app with table layouts, no test ids
-and a login form that labels nothing. Three capabilities: `ensure_session` (sign in),
-`get_account_balance` (read-only, can answer `account_not_found`) and `open_new_account`
-(irreversible, can answer `funding_account_not_found`). Evidence for every claim below is in
-`evidence/`; the offline demo is in the README.
+and unlabeled form inputs. Capabilities: `ensure_session` (sign in), `get_account_balance`
+(read-only) and `open_new_account` (irreversible). Every claim below has evidence in `evidence/`.
 
 ## 1. Architecture
 
-One Python process, asyncio, plain files. No services, queues or database: the brief rewards a
-small correct system, and every seam that would need to scale (the surface, the artifact store,
-the operator channel) is an interface with one implementation.
+One Python process, asyncio, plain files: no services, queues or database. Every part that would
+need to scale (surface, artifact store, operator channel) is an interface with one implementation.
 
 ```
-discover (model loop) --trace--> recorder --artifact JSON--> replay engine --result--> caller
-        \                                                         |
-         +--------------- GuardedSurface (policy, masks, lease) --+--- Surface (Playwright)
-                                                                  |
-                                     handoff: control.json <--> cua operator (a person)
+discover (model) --trace--> recorder --artifact--> replay engine --result--> caller
+                                                        |
+        GuardedSurface: policy, masks, control lease ---+--- Surface (Playwright)
+                                                        |
+                        handoff: control.json <--> cua operator (a person)
 ```
 
 - **Surface** (`observe`, `resolve`, `act`) is the only code that touches Playwright. Perception
   is a frame-aware snapshot of what an operator sees: role, name, inferred label, table row and
   column, box. The model acts on snapshot refs and never writes a selector.
-- **GuardedSurface** wraps it, and is all that discovery, replay and handoff get: every action
-  passes the policy and the control lease first, every screenshot is masked.
-- **Discovery** is a boring observe, decide, act loop with Claude Sonnet via tool calling. The
-  model does the one thing only a model can do (pick the next control on an unseen page);
-  policy, approval, redaction, stop conditions and recording are plain code.
-- **Replay** is a deterministic state machine over the artifact. It cannot import the model:
-  `tests/test_boundaries.py` walks the import graph and fails if it ever does.
+- **GuardedSurface** is all that discovery, replay and handoff get: every action passes the
+  policy and the control lease first, every screenshot is masked.
+- **Discovery** is an observe, decide, act loop with Claude Sonnet via tool calling. The model
+  only picks the next control; policy, approval, redaction, stop conditions and recording are
+  plain code.
+- **Replay** is a deterministic state machine with no model. A test walks the import graph and
+  fails if replay can reach the model.
 
-Trade-off: accessibility-style perception, not screenshot coordinates. It reads frames and tables
-directly and survives restyling; it is the same model a desktop accessibility API gives, so it is
-not a web-only bet. The cost is that canvas-drawn UIs would need the BBox strategy (section 4).
+Trade-off: accessibility-style perception over screenshot coordinates. It reads frames and tables
+directly and survives restyling, and desktop accessibility APIs expose the same model. Canvas-only
+UIs would need the BBox strategy (section 4).
 
 ## 2. Artifact schema
 
-`artifacts/<name>@<semver>.json`, a Pydantic model. The contract a calling agent sees:
+`artifacts/<name>@<semver>.json`, a Pydantic model. The caller's contract: typed `inputs`
+(`sensitive`, optional regex), typed `outputs` ("$515.50" returns 515.50, unit USD), declared
+`outcomes` with messages, `risk`, and review `status` (`draft`, `approved`, `deprecated`). Each
+step has a plain-English `intent` (written by the model while acting), an `action`, a `target`
+LocatorChain, a `value` (literal or `{{param}}`), and `pre`/`post` checkpoints (URL pattern with
+params, landmark heading, element).
 
-- `inputs`: typed, required, `sensitive`, optional regex. Sensitive ones are masked everywhere.
-- `outputs`: name, type (`decimal` turns "$515.50" into 515.50), unit, and the step that reads it.
-- `outcomes`: the business answers it can give instead of the happy path, each with a message.
-- `risk` (`read_only`, `reversible`, `irreversible`) and `status` (`draft`, `approved`,
-  `deprecated`).
-
-What replay needs, per step: a plain-English `intent` (written by the model while acting, read
-by reviewers), an `action`, a `target` LocatorChain, a `value` (literal or `{{param}}`), and
-`pre` and `post` checkpoints (URL pattern with params, a landmark heading, an element).
-
-Decisions worth defending:
-
-- **Locators describe, they do not point.** A chain is ordered fallbacks: role and name, inferred
-  label, table cell by row and column, text anchor ("combobox below 'Please choose an existing
-  account'"), then CSS (flagged fragile). The recorder keeps a strategy only if it matches
-  exactly the recorded control on the recorded page, keeps text anchors only from the text that
-  labels the control (nearest thing on that side, within 40 px), and drops fallbacks that ignore
-  an input (on a page with more rows, "the first balance cell" would quietly read the wrong
-  account).
-- **Business outcomes are declared, not inferred at runtime.** `account_not_found` says: on the
-  overview, once the column headers and at least one data row are present, the link named
-  `{{account_id}}` is absent. The `present` guard is what keeps a renamed column from becoming a
-  false "not found": it fails too, and the run is a Failure a person looks at.
-- **No caller value is ever stored.** Values become `{{param}}`, in targets, URLs and checkpoints.
-  The recorder refuses to write an artifact that still contains a sensitive value.
-- **`content_hash` covers behavior only** (not id, status or provenance). Approving or deprecating
-  does not change it; editing a step does, and replay refuses an artifact whose hash no longer
-  matches. Every result records which artifact ran, its status and its hash.
-- `app.app_version_fingerprint` hashes the start page's navigation; `overrides` is reserved for
-  per-tenant patches (section 4).
+- **Locators describe, they do not point.** Ordered fallbacks: role and name, inferred label,
+  table cell by row and column, text anchor, then CSS (flagged fragile). A strategy is kept only
+  if it matches exactly the recorded control on the recorded page. Text anchors must label the
+  control (nearest thing on that side, within 40 px); long ones get a short-text fallback. A
+  chain found by an input drops fallbacks that ignore it ("the first balance cell" would read
+  the wrong account).
+- **Business outcomes are declared, with guards.** `account_not_found`: on the overview, once the
+  headers and a data row are present, no link named `{{account_id}}`. If the page reshapes, the
+  guard fails too and the run is a Failure, never a false "not found".
+  `funding_account_not_found` checks that a loaded list lacks the option.
+- **No caller value is stored**: values become `{{param}}`; the recorder refuses otherwise.
+- **`content_hash` covers behavior only.** Approving or deprecating does not change it; editing a
+  step does, and replay refuses a mismatched hash. Every result records artifact id, status, hash.
 
 ## 3. Determinism & error handling
 
-Same inputs, same steps, verified at every step: wait for `pre`, check the declared outcomes,
-resolve the target (first strategy with exactly one match; ties are reported, never guessed),
-act through policy, wait for `post`. Waiting is polling of real state with a step timeout, never
-a fixed sleep.
-
-Every run ends in exactly one result, and only bugs raise:
+Every step: wait for `pre`, check declared outcomes, resolve the target (first strategy with
+exactly one match; ties are reported, never guessed), act through policy, wait for `post`.
+Waits poll real state with a step timeout, never a fixed sleep.
 
 | Result | Meaning | Examples |
 |---|---|---|
-| `Success` | done; typed outputs | balance 515.50 |
-| `BusinessOutcome` | the app answered "no"; the caller branches on `code` | `account_not_found`, `invalid_credentials`, `funding_account_not_found` |
-| `NeedsHuman` | paused on purpose | unapproved irreversible step; anything after a commit |
-| `Failure` | the automation could not do its job; `kind`, step, expected, observed, screenshot | `locator_not_found`, `checkpoint_mismatch`, `app_error`, `action_failed`, `policy_violation` |
+| `Success` | done, typed outputs | balance 515.50 |
+| `BusinessOutcome` | the app said no; caller branches on `code` | `account_not_found`, `invalid_credentials` |
+| `NeedsHuman` | paused on purpose | unapproved irreversible step; any failure after a commit |
+| `Failure` | automation could not do its job: kind, step, expected, observed, screenshot | `locator_not_found`, `checkpoint_mismatch`, `app_error`, `action_failed` |
 
-Recoverable conditions never change the status; they are listed in `evidence.recoveries`:
+Recoverable conditions keep the status and are listed in `evidence.recoveries`: expired session
+(replay `ensure_session`, resume from the last page load), failed or 500 page load (retried with
+backoff; clicks never are), unexpected dialog (dismissed), slow load (absorbed by the waits).
 
-- **Session expired** (login form present): replay `ensure_session`, resume from the last page load.
-- **Failed or 500 page load**: retried with backoff (page loads only; clicks are never retried).
-- **Unexpected dialog**: dismissed and noted.
-- **Slow load**: absorbed by the waits.
+Order matters. ParaBank shows the login form and "internal error" together when a session
+expires, and a wrong password under an "Error!" heading. So declared outcomes are checked before
+the app-error detector, and the session check before the error check.
 
-App-level detectors run on every look, in an order that matters: on ParaBank an expired session
-shows the login form and "internal error" on the same page, and a wrong password shows an
-"Error!" heading. Declared outcomes are checked before the app-error detector, or the bank's own
-answers would look like server faults.
+**Irreversible steps change the rules.** A step counts as committed once policy allows it and
+before it runs, so a click that lands and then errors still "may have happened". After that the
+run never signs in again, rewinds, retries or clicks again; every failure becomes `NeedsHuman`
+naming the step. Tests count accounts opened on a fake server: never twice.
 
-**Irreversible steps change the rules.** The step counts as committed once policy allows the
-action and before it runs, so a click that lands and then errors is still "it may have
-happened". After that the run never signs in again, rewinds, retries or clicks again; every
-failure becomes `NeedsHuman` naming the committed step. Tests count accounts opened on a fake
-server and prove an account is never opened twice.
-
-Drift (secondary, since bank UIs change slowly): fallbacks absorb small changes and evidence
-records which strategy fired; a changed navigation fingerprint is a warning; a reshaped page
-fails a checkpoint or a guard and is reported as a Failure, never as a wrong answer.
-
-Faults are injected in our own browser (Playwright routes): `slow`, `http500[:n]`,
-`session_expire`, `dialog`. The shared demo never sees extra load.
+Drift is secondary in a stable UI: fallbacks absorb small changes and evidence records which one
+fired; a changed navigation fingerprint is a warning; a reshaped page fails a checkpoint.
+Faults (`slow`, `http500`, `session_expire`, `dialog`) are injected in our own browser only.
 
 ## 4. Heterogeneity & multi-tenant
 
-**Surfaces.** The seam is the Surface protocol and the Node it returns (role, name, label, table
-position, frame path, box). Artifacts only contain Nodes' descriptions, never markup. Matching
-(role and name, label, table cell, text anchor) is plain Python over Nodes, so a new surface gets
-it for free:
+**Surfaces.** The seam is the Surface protocol and its Node (role, name, label, table position,
+frame path, box). Artifacts only hold descriptions of Nodes, never markup, and matching is plain
+Python over Nodes. A legacy web app is this one. A desktop app would be a surface producing the
+same Nodes from Windows UI Automation (or macOS accessibility); replay, policy, handoff and the
+schema do not change. A surface with no element tree would use the `BBox` strategy, which exists
+in the schema and is refused on web.
 
-- A legacy web app is this one: frames, tables and unlabeled inputs are handled already.
-- A desktop app would be a `UIASurface` producing the same Nodes from the Windows UI Automation
-  tree (or the macOS accessibility tree), with `act` via the platform's input APIs. Replay,
-  policy, handoff and the schema do not change.
-- A surface with no element tree at all (a remote desktop image) would use the `BBox` strategy
-  with screenshot matching; it exists in the schema and is refused on web, where a tree is
-  always available.
+**Tenants (built in M7).** Tenants of one vendor product differ in words, not flows. So an
+artifact is recorded once and each tenant gets one app-wide override (`tenants/tenant_b.yaml`):
+UI text as the base knows it, mapped to the tenant's words; the tenant's app signals (its login
+button); its navigation fingerprint. Replay derives `get_account_balance@0.2.0+tenant_b` with its
+own hash and logs the base hash; the base file is never edited. Only whole UI-text values are
+renamed (locator names, labels, anchors, columns, landmarks), never placeholders or URLs. The
+policy follows the renames, so "Sign In" keeps the reversible rule "Log In" had and "Open a Share
+Account" stays irreversible. Without that, every renamed button would need approval.
 
-**Tenants.** Hundreds of tenants run the same vendor product, configured differently. The design:
-one base artifact per vendor capability, keyed by `app.vendor` and version, plus small
-per-tenant `overrides` that patch only what differs (a label, a landmark, a URL prefix,
-`AppSignals` like the error heading). The base keeps its hash; the tenant's effective artifact
-is base plus patch, hashed and approved on its own. Drift is detected three ways: the
-navigation fingerprint (cheap, every run), checkpoint and guard failures (precise, per step), and
-which fallback strategy fired (trend over runs). A tenant that drifts degrades to a Failure that
-names the step, and a re-discovery on that tenant produces a candidate override to review. Built:
-the fingerprint, `base_url` as a parameter, `AppSignals` per app, the `overrides` field. Not
-built: applying overrides (section 7).
+Tenant B is simulated in our own browser (`tenants/variants/tenant_b.yaml` renames page text).
+Evidence, all live: the base artifact passes on the base app; on tenant B it fails at the first
+step that no longer fits, naming it, with no false business answer; with the override it passes,
+and `account_not_found` still works. Drift per tenant shows as a fingerprint warning, then as
+checkpoint failures; a re-discovery on that tenant yields a candidate override to review.
 
 ## 5. Escalation & handoff
 
-**Detecting stuck.**
-- In discovery: the model calls `request_human`, an irreversible action needs approval, or the
-  loop stops itself (three actions in a row that change nothing, a step limit, a time limit).
-- In replay: an irreversible step without approval, anything going wrong after a commit, or an
-  operator taking control unasked.
+**Stuck** in discovery: the model calls `request_human`, an irreversible action needs approval,
+or the loop stops itself (three actions changing nothing, step limit, time limit). In replay: an
+irreversible step without approval, any failure after a commit, or an operator taking control.
 
-**Routing.** With `--handoff`, the run writes an intervention into `runs/<id>/control.json`:
-capability, step, intent, reason, redacted URL and a masked screenshot. It prints how to answer
-and keeps the browser open. Without a handoff, the same moment ends the run as `NeedsHuman`.
+**Routing.** With `--handoff`, the run writes an intervention to `runs/<id>/control.json`
+(capability, step, intent, reason, redacted URL, masked screenshot), prints how to answer, and
+keeps the browser open. Without a handoff, the same moment ends as `NeedsHuman`.
 
-**Taking control.** `control.json` is a lease: `owner` (automation or human), `holder`, and an
-`epoch` that rises on every change of hands. GuardedSurface checks it before every action, so
-`cua operator take` stops automation before its next action, even mid-run. The person works in the
-same live, headed browser. Capture listeners log each click and selection with its policy risk;
-typed text is never read.
+**Control.** `control.json` is a lease: owner (automation or human), holder, and an epoch that
+rises on every change of hands. GuardedSurface checks it before every action, so `cua operator
+take` stops automation before its next action, even mid-run. The person works in the same live
+browser; capture logs each click and selection with its policy risk, never typed text.
 
-**Handing back.**
-- `approve <run> <request id>`: automation does that one step, and only that one.
-- `release`: the run re-observes and verifies the step's checkpoint before it continues. If the
-  person did the irreversible step (capture saw it), it is recorded as committed.
-- `decline`: the run ends without doing the step.
-
-Approve and decline must name the request they answer, so a yes cannot land on a different
-request. If control changed hands while automation was not looking, the epoch differs and the
-run re-checks rather than carrying on blind. Evidence:
-`evidence/*-replay-open_new_account-2677` pauses at the irreversible step, is approved, and
-completes.
-
-The operator UI is a CLI on purpose (the brief allows a mock). A web console would read and
-write the same file, or the same record in a database.
+**Handing back.** `approve <run> <id>`: automation does that one step only. `release`: the run
+re-observes and verifies the step's checkpoint before going on (a person's irreversible click is
+recorded as a commit). `decline`: the run ends. Answers name their request, so a yes cannot land
+on another. If control changed hands unseen, the epoch differs and the run re-checks. Evidence:
+`evidence/*-replay-open_new_account-4335` pauses at the irreversible step, is approved, completes.
+The operator UI is a CLI on purpose; a web console would read and write the same lease.
 
 ## 6. Safety
 
-- **Allowlist** (`policies/parabank.yaml`, validated, unknown keys rejected): origins, paths
-  (deny wins; the admin console and the APIs are denied), action kinds, denied controls.
-  Paths are matched after decoding and normalizing, so `%2561dmin` or `x/../admin.htm` do not
-  slip through.
-- **Network guard**: aborts any page load the policy denies, whoever caused it (a misjudged link,
-  a redirect, a person in the handoff window).
-- **Risk**: known buttons are classified (Transfer, Open New Account, ...). An unknown button is
-  irreversible by default: in a bank, asking once costs less than an unwanted transfer.
-  Irreversible needs a person each time for a draft, or an approved artifact plus the caller's
-  explicit `confirm`.
-- **Data**: the model never sees a sensitive value (it reads `[REDACTED:account_id]`, types
-  `{{account_id}}`). Logs pass through a redactor that knows the run's secrets by name and also
-  masks shapes (account and card numbers, SSNs, tokens, session ids). Screenshots mask secret
-  fields and any element showing a sensitive value, and fail closed. Artifacts hold placeholders
-  only. Offline recordings are sanitized, then checked for every real value before they are
-  written.
+- **Allowlist** (`policies/parabank.yaml`, unknown keys rejected): origins, paths (deny wins;
+  admin console and APIs denied, matched after decoding so `%2561dmin` fails), action kinds,
+  denied controls. A network guard aborts any denied page load, whoever caused it.
+- **Risk**: known controls are classified; an unknown button is irreversible by default.
+  Irreversible needs a person each time on a draft, or an approved artifact plus `--confirm`.
+- **Data**: the model never sees a sensitive value (it reads `[REDACTED:account_id]` and types
+  `{{account_id}}`). Logs are redacted by name and by shape (account and card numbers, SSNs,
+  tokens, session ids). Screenshots mask secret fields and any element showing a sensitive
+  value, and fail closed. Offline recordings are sanitized, then checked for every real value.
 
-Limits, stated plainly:
-- Shape-based redaction is a safety net, not a guarantee: a name or an address has no shape, so
-  it must be declared.
-- A person's click in the handoff window is checked as it happens and logged, not blocked
-  beforehand; denied page loads are still blocked by the network guard.
-- Dialogs are dismissed automatically, even while a person holds control.
-- The redactor replaces every match of a secret, so an operator whose name equals the test
-  username appears as `[REDACTED:username]`.
+Limits: shape-based redaction cannot catch names or addresses, which must be declared (`--scrub`
+for recordings). A person's click is checked and logged as it happens, not blocked beforehand;
+denied page loads are still blocked. Dialogs are dismissed even while a person holds control.
+An operator named like the test username is logged as `[REDACTED:username]`.
 
 ## 7. Cuts
 
-Left out on purpose, and what is next:
-
-- **Applying tenant overrides.** The field and the design exist. Next: a second ParaBank variant
-  via route interception (renamed labels), with one base artifact and a small override.
-- **An agent-facing catalog** (approved artifacts as typed tools, e.g. an MCP server). The
-  artifact contract is already shaped for it.
-- **The recorder deriving more outcomes.** `account_not_found` is derived from the run;
-  `invalid_credentials` and `funding_account_not_found` were added in review (and re-sealed with
-  `cua seal`). Next: derive "option missing from a list" for select steps, as for rows.
+- **Agent-facing catalog** (approved artifacts as typed tools, e.g. MCP). The contract fits it.
+- **Recorder-derived outcomes.** `account_not_found` is derived from the run;
+  `invalid_credentials` and `funding_account_not_found` were added in review (`cua seal`). Next:
+  derive "option missing" for select steps.
+- **Tenant overrides beyond text**: per-tenant URL prefixes or extra steps; approving an
+  effective artifact separately from its base.
 - **Desktop surface, real operator console, replay-N stability scoring.** Seams are in place.
-- **Offline coverage.** Only `get_account_balance` has a recorded pack; `session_expire` cannot
-  trigger offline (the recording answers regardless of cookies). Recording `open_new_account`
-  means opening a real (demo) account, so it waits for a person to approve one.
-- Discovery still signs in with a small scripted login; replay uses the `ensure_session` artifact.
+- **Offline coverage**: only `get_account_balance` has a pack; `session_expire` cannot trigger
+  offline. Discovery still signs in with a small scripted login.

@@ -135,3 +135,14 @@ def test_sensitive_inputs_from_policy_and_artifact() -> None:
     got = POLICY.sensitive_values(inputs, declared=["memo"])
     assert set(got) == {"username", "password", "funding_account_id", "memo"}
     assert "account_type" not in got  # "account_type" is not an account number
+
+
+def test_a_tenants_renamed_controls_keep_their_risk() -> None:
+    """Tenant B says "Sign In" and "Open a Share Account". Same controls, same rules."""
+    tenant = POLICY.renamed({"Log In": "Sign In", "Open New Account": "Open a Share Account"})
+    click = Click(ref="e1")
+    assert tenant.classify(click, control("button", "Sign In"))[0] == "reversible"
+    assert tenant.classify(click, control("button", "Open a Share Account"))[0] == "irreversible"
+    assert (
+        POLICY.classify(click, control("button", "Sign In"))[0] == "irreversible"
+    )  # base: unknown

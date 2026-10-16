@@ -41,6 +41,7 @@ from cua.replay.engine import Handoff, ReplayOptions, replay
 from cua.surface.base import Observation, Resolved, SurfaceError, Unresolved
 from cua.surface.faults import WebFaults
 from cua.surface.guarded import ControlGate, GuardedSurface
+from cua.surface.variant import install_variant
 from cua.surface.web import WebSurface
 
 ORIGIN = "https://bank.test"
@@ -464,13 +465,17 @@ async def open_session(
     faults: FaultPlan | None = None,
     gate: ControlGate | None = None,
     wrap: Callable[[WebSurface], Flaky] | None = None,
+    policy: Policy = POLICY,
+    variant: dict[str, str] | None = None,
 ) -> Session:
     context = await browser.new_context()
+    if variant:
+        await install_variant(context, variant)  # another tenant's words, as in the CLI
     await context.route(f"{ORIGIN}/**", handler(bank))
     web = WebSurface(await context.new_page(), polite_delay_ms=0, action_timeout_ms=2_000)
     await web.guard_navigation(POLICY.url_allowed)
     inner = wrap(web) if wrap else web
-    surface = GuardedSurface(inner, POLICY, sensitive={**sensitive, **CREDS}, gate=gate)
+    surface = GuardedSurface(inner, policy, sensitive={**sensitive, **CREDS}, gate=gate)
     log = RunLog(tmp_path, "run", surface.redact, base=tmp_path)
     injector = None
     if faults is not None:

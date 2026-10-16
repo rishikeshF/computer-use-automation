@@ -8,7 +8,7 @@ on replay by the same description the model saw during discovery.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -88,6 +88,7 @@ class WebSurface:
         allowed_url: Callable[[str], bool] | None = None,
         har: Path | None = None,
         record_har: bool = False,
+        variant: Mapping[str, str] | None = None,
     ) -> AsyncIterator[WebSurface]:
         """Start a fresh browser and yield a surface on its single page. Closes everything after.
 
@@ -96,7 +97,9 @@ class WebSurface:
         Offline mode: with `har`, every request is answered from that recording and anything
         not in it is aborted, so nothing reaches the network. With `record_har` too, the run
         goes to the network as usual and the traffic is written to `har` when the browser
-        closes (raw: the caller must sanitize it before keeping it)."""
+        closes (raw: the caller must sanitize it before keeping it).
+
+        `variant` makes the app look like another tenant (see cua.surface.variant)."""
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
             try:
@@ -106,6 +109,10 @@ class WebSurface:
                     await context.route_from_har(
                         har, update=record_har, update_content="embed", not_found="abort"
                     )
+                if variant:
+                    from cua.surface.variant import install_variant  # avoids an import cycle
+
+                    await install_variant(context, variant)
                 page = await context.new_page()
                 surface = cls(page, polite_delay_ms=polite_delay_ms)
                 if allowed_url is not None:

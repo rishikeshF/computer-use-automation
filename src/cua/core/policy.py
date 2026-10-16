@@ -59,9 +59,12 @@ class ControlRule(BaseModel):
         self._rx = re.compile(self.name, re.IGNORECASE)
 
     def matches(self, target: TargetInfo) -> bool:
-        return (self.role is None or self.role == target.role) and bool(
-            self._rx.fullmatch(target.name or target.label or "")
+        return (self.role is None or self.role == target.role) and self.matches_text(
+            target.name or target.label or ""
         )
+
+    def matches_text(self, text: str) -> bool:
+        return bool(self._rx.fullmatch(text))
 
 
 class RiskRules(BaseModel):
@@ -109,6 +112,34 @@ class Policy:
     @classmethod
     def load(cls, path: str | Path) -> Policy:
         return cls(PolicyConfig.model_validate(yaml.safe_load(Path(path).read_text("utf-8"))))
+
+    def renamed(self, text: Mapping[str, str]) -> Policy:
+        """The same policy for a tenant that calls controls by other names.
+
+        A renamed control keeps the rule its base name matched: if the tenant says "Sign In"
+        for "Log In", it stays reversible; "Open a Share Account" for "Open New Account" stays
+        irreversible. Without this, every renamed button would fall to the default (the
+        conservative answer, but a wrong one for sign-in)."""
+
+        def extend(rules: list[ControlRule]) -> list[ControlRule]:
+            extra = [
+                ControlRule(role=r.role, name=re.escape(new))
+                for r in rules
+                for old, new in text.items()
+                if r.matches_text(old)
+            ]
+            return rules + extra
+
+        cfg = self.config
+        risk = cfg.risk.model_copy(
+            update={
+                "irreversible": extend(cfg.risk.irreversible),
+                "reversible": extend(cfg.risk.reversible),
+            }
+        )
+        return Policy(
+            cfg.model_copy(update={"risk": risk, "deny_controls": extend(cfg.deny_controls)})
+        )
 
     # ---- 1. allowed? ---------------------------------------------------------------------------
 

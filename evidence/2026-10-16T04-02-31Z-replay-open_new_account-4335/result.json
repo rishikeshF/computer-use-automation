@@ -1,0 +1,23 @@
+{
+  "status": "success",
+  "outputs": {
+    "new_account_id": "*9338"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T04-02-31Z-replay-open_new_account-4335",
+    "dir": "evidence/2026-10-16T04-02-31Z-replay-open_new_account-4335",
+    "artifact": {
+      "id": "open_new_account@0.2.0",
+      "status": "draft",
+      "content_hash": "sha256:59457efeccef090097cb3c36209dc26cc7328d77d9751b40abc36f7f3cb54487"
+    },
+    "recoveries": [],
+    "interventions": [
+      "s5: approved by [REDACTED:username]"
+    ],
+    "raw_outputs": {
+      "new_account_id": "*9338"
+    },
+    "warnings": []
+  }
+}

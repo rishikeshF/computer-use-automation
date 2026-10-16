@@ -13,6 +13,8 @@ from cua.core.artifact import Capability
 from cua.core.faults import FaultPlan
 from cua.core.result import BusinessOutcome, Failure, NeedsHuman, RunResult, Success
 from cua.core.runlog import RunLog
+from cua.core.tenant import TenantOverride, apply
+from cua.replay.detectors import PARABANK, AppSignals
 from cua.replay.engine import ReplayOptions, replay
 from cua.surface.faults import WebFaults
 from tests.fakebank import (
@@ -25,6 +27,7 @@ from tests.fakebank import (
     OPEN,
     OPEN_INPUTS,
     OPEN_THEN_OVERVIEW,
+    POLICY,
     SESSION,
     Bank,
     Flaky,
@@ -385,3 +388,95 @@ async def test_funding_list_loading_late_is_waited_for(browser: Browser, tmp_pat
     late = Bank(options_after_ms=1500)
     result = await run_open(browser, tmp_path / "late", late, BAD)
     assert isinstance(result, BusinessOutcome) and result.code == "funding_account_not_found"
+
+
+# ---- a second tenant on the same product -------------------------------------------------------
+
+# Tenant B's words for the same pages: what its server shows.
+TENANT_B_PAGES = {
+    "Customer Login": "Member Sign In",
+    "Username": "Member ID",
+    "Log In": "Sign In",
+    "Accounts Overview": "Account Summary",
+    "Balance*": "Current Balance*",
+    "Available Amount": "Available Balance",
+}
+# What we know about tenant B: the same renames, plus how it shows a login form.
+TENANT_B = TenantOverride(
+    tenant="tenant_b",
+    vendor="test",
+    text=TENANT_B_PAGES,
+    signals={"login_button": "Sign In"},
+)
+
+
+async def run_tenant(
+    browser: Browser,
+    tmp_path: Path,
+    account: str,
+    override: TenantOverride | None,
+    faults: FaultPlan | None = None,
+) -> RunResult:
+    cap, session = BALANCE, SESSION
+    signals = PARABANK
+    if override is not None:
+        cap, _ = apply(BALANCE, override)
+        session, _ = apply(SESSION, override)
+        signals = AppSignals(**{**PARABANK.__dict__, **override.signals})
+    s = await open_session(
+        browser,
+        tmp_path,
+        Bank(),
+        variant=TENANT_B_PAGES,
+        sensitive={"account_id": account},
+        faults=faults,
+        policy=POLICY.renamed(override.text) if override else POLICY,
+    )
+
+    async def sign_in() -> RunResult:
+        opts = ReplayOptions(base_url=BASE, signals=signals)
+        return await replay(session, CREDS, s.surface, s.log, opts)
+
+    opts = ReplayOptions(
+        base_url=BASE, preconditions={"ensure_session": sign_in}, hooks=s.faults, signals=signals
+    )
+    try:
+        return await replay(cap, {"account_id": account}, s.surface, s.log, opts)
+    finally:
+        await s.web.page.context.close()
+
+
+async def test_base_artifact_on_tenant_b_fails_cleanly(browser: Browser, tmp_path: Path) -> None:
+    """Without the override the run stops at the first step that does not fit and says so.
+    It never turns into a wrong answer: a missing account still is not "not found"."""
+    for account in (GOOD, BAD):
+        result = await run_tenant(browser, tmp_path / account, account, None)
+        assert isinstance(result, Failure), result
+        assert result.kind == "precondition_failed"
+        # Named exactly: sign-in step s2 looks for the field labelled "Username", now "Member ID".
+        assert result.observed == "ensure_session: locator_not_found at s2: not_found: label_text=0"
+
+
+async def test_base_artifact_plus_override_runs_on_tenant_b(
+    browser: Browser, tmp_path: Path
+) -> None:
+    result = await run_tenant(browser, tmp_path, GOOD, TENANT_B)
+    assert isinstance(result, Success), result
+    assert result.outputs == {"balance": Decimal("515.50"), "available": Decimal("500.00")}
+    assert result.evidence.artifact is not None
+    assert result.evidence.artifact.id == "get_account_balance@0.1.0+tenant_b"
+
+
+async def test_business_outcomes_carry_over_to_tenant_b(browser: Browser, tmp_path: Path) -> None:
+    result = await run_tenant(browser, tmp_path, BAD, TENANT_B)
+    assert isinstance(result, BusinessOutcome) and result.code == "account_not_found", result
+
+
+async def test_tenant_signals_keep_session_recovery_working(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """Tenant B's login button says "Sign In". The override's signals tell the detector, so an
+    expired session is still recognised and recovered rather than read as a broken page."""
+    result = await run_tenant(browser, tmp_path, GOOD, TENANT_B, FaultPlan(session_expire=True))
+    assert isinstance(result, Success), result
+    assert result.evidence.recoveries == ("s1: session expired; signed in again, resumed at s1",)

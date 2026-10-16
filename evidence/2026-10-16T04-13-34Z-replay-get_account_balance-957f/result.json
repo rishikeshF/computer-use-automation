@@ -1,0 +1,23 @@
+{
+  "status": "success",
+  "outputs": {
+    "balance": "415.50",
+    "available": "415.50"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T04-13-34Z-replay-get_account_balance-957f",
+    "dir": "evidence/2026-10-16T04-13-34Z-replay-get_account_balance-957f",
+    "artifact": {
+      "id": "get_account_balance@0.2.0+tenant_b",
+      "status": "draft",
+      "content_hash": "sha256:c6402237861caf3a69dcd4557cd7e35d888e24e04ba013dde7e2e8d186d19060"
+    },
+    "recoveries": [],
+    "interventions": [],
+    "raw_outputs": {
+      "balance": "$415.50",
+      "available": "$415.50"
+    },
+    "warnings": []
+  }
+}

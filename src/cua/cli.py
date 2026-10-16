@@ -35,6 +35,7 @@ from cua.core.policy import Policy
 from cua.core.result import BusinessOutcome, NeedsHuman, RunResult, Success
 from cua.core.runlog import RunLog, new_run_id, portable, utc_now
 from cua.core.template import render
+from cua.core.tenant import TenantOverride, Variant, apply
 from cua.core.url import canonical_path
 from cua.discover.agent import Approver, DiscoveryTask, discover
 from cua.discover.recorder import RecorderError, record
@@ -43,6 +44,7 @@ from cua.handoff import control
 from cua.handoff.control import ControlError, ControlFile, Intervention, Lease
 from cua.handoff.runner import HumanHandoff
 from cua.llm.claude import DEFAULT_MODEL, AnthropicClient
+from cua.replay import detectors
 from cua.replay.engine import ReplayOptions, replay
 from cua.surface.capture import HumanCapture
 from cua.surface.faults import WebFaults
@@ -302,6 +304,13 @@ def replay_cmd(
     record_har: Annotated[
         Path | None, typer.Option(help="Record this run as an offline pack (offline/<name>.json).")
     ] = None,
+    tenant: Annotated[
+        Path | None, typer.Option(help="Apply a tenant override (tenants/<tenant>.yaml).")
+    ] = None,
+    variant: Annotated[
+        Path | None,
+        typer.Option(help="Make the app look like another tenant (tenants/variants/*.yaml)."),
+    ] = None,
     scrub: Annotated[
         list[str],
         typer.Option(help="More text to remove from the recording (a name shown on screen)."),
@@ -331,6 +340,10 @@ def replay_cmd(
         given = {**mode.pack.inputs, **given}  # the recorded stand-ins, unless overridden
     mode.record_to = record_har
     mode.scrub = tuple(scrub)
+    look = Look(
+        override=TenantOverride.load(tenant) if tenant else None,
+        variant=Variant.load(variant) if variant else None,
+    )
     result = asyncio.run(
         _replay(
             cap,
@@ -344,11 +357,29 @@ def replay_cmd(
             runs_dir,
             artifacts_dir,
             mode,
+            look,
         )
     )
     typer.echo(json.dumps(json.loads(result.model_dump_json()), indent=2))
     codes = {Success: 0, BusinessOutcome: 3, NeedsHuman: 4}
     raise typer.Exit(codes.get(type(result), 1))
+
+
+@dataclass
+class Look:
+    """Which tenant the run is for, and (for demos) which tenant the app is made to look like."""
+
+    override: TenantOverride | None = None
+    variant: Variant | None = None
+
+    def effective(self, cap: Capability) -> tuple[Capability, list[str]]:
+        return apply(cap, self.override) if self.override else (cap, [])
+
+    def signals(self) -> detectors.AppSignals:
+        base = detectors.PARABANK
+        if self.override is None or not self.override.signals:
+            return base
+        return detectors.AppSignals(**{**base.__dict__, **self.override.signals})
 
 
 @dataclass
@@ -373,8 +404,13 @@ async def _replay(
     runs_dir: Path,
     artifacts_dir: Path,
     mode: Offline,
+    look: Look,
 ) -> RunResult:
     pol = Policy.load(policy_file)
+    if look.override is not None:
+        pol = pol.renamed(look.override.text)  # renamed controls keep their risk
+    base_cap = cap
+    cap, renamed = look.effective(cap)
     # Preconditions are the newest artifact of that name. Their inputs come from the environment
     # as PARABANK_<INPUT>, so credentials never appear on a command line or in shell history.
     pre: dict[str, tuple[Capability, dict[str, str]]] = {}
@@ -382,7 +418,8 @@ async def _replay(
         found = newest_usable(artifacts_dir, name)
         if found is None:
             raise typer.BadParameter(f"precondition {name!r} has no usable artifact")
-        pre_cap = load_artifact(found)
+        pre_cap, pre_renamed = look.effective(load_artifact(found))
+        renamed += [f"{name}: {r}" for r in pre_renamed]
         if mode.pack is not None:
             pre_inputs = dict(mode.pack.preconditions.get(name, {}))  # recorded stand-ins
         else:
@@ -405,6 +442,7 @@ async def _replay(
         allowed_url=pol.url_allowed,
         har=mode.har or raw,
         record_har=raw is not None,
+        variant=look.variant.text if look.variant else None,
     ) as web:
         # With a handoff, control.json says who acts; the surface checks it before each action.
         lease: Lease | None = None
@@ -414,6 +452,18 @@ async def _replay(
         log = RunLog(runs_dir, run_id, surface.redact, base=ROOT)
         if mode.pack is not None and mode.har is not None:
             log.event("offline", pack=mode.pack.har, recorded_at=mode.pack.recorded_at)
+        if look.variant is not None:
+            log.event("variant", tenant=look.variant.tenant, note=look.variant.note)
+        if look.override is not None:
+            log.event(
+                "tenant_override",
+                tenant=look.override.tenant,
+                base=base_cap.id,
+                base_hash=base_cap.content_hash,
+                effective=cap.id,
+                effective_hash=cap.content_hash,
+                renamed=renamed,
+            )
         desk: HumanHandoff | None = None
         if lease is not None and handoff_timeout is not None:
             capture = HumanCapture(
@@ -446,7 +496,7 @@ async def _replay(
             pre_cap, pre_inputs = pre[name]
 
             async def establish() -> RunResult:
-                opts = ReplayOptions(base_url=base_url, handoff=desk)
+                opts = ReplayOptions(base_url=base_url, handoff=desk, signals=look.signals())
                 return await replay(pre_cap, pre_inputs, surface, log, opts)
 
             return establish
@@ -457,6 +507,7 @@ async def _replay(
             preconditions={name: handler(name) for name in pre},
             hooks=injector,
             handoff=desk,
+            signals=look.signals(),
         )
         try:
             result = await replay(cap, inputs, surface, log, options)

@@ -44,7 +44,8 @@ uv run cua replay $A --offline $P --input account_id=12345   # account_not_found
 uv run cua replay $A --offline $P --inject http500           # page load retried, then success
 uv run cua replay $A --offline $P --inject http500:3         # retries used up: app_error (exit 1)
 uv run cua replay $A --offline $P --inject dialog            # alert dismissed and noted
-uv run pytest                                                # 160 tests, all offline
+uv run cua replay $A --offline $P --variant tenants/variants/tenant_b.yaml     --tenant tenants/tenant_b.yaml                           # another tenant: see Tenants
+uv run pytest                                                # 167 tests, all offline
 ```
 
 Each run prints its result and writes a redacted log and screenshots to `runs/<run id>/`.
@@ -106,6 +107,26 @@ they answer, so a yes given while looking at one request can never land on anoth
 
 Discovery can ask for its approvals the same way: add `--handoff` to `cua discover`.
 
+## Tenants
+
+Many institutions run the same vendor product with their own words on it. An artifact is
+recorded once; each tenant gets one override for the whole app (`tenants/<tenant>.yaml`): base
+UI text mapped to the tenant's text, how the tenant shows a login form, and its navigation
+fingerprint. Replay derives `<name>@<version>+<tenant>` with its own hash and logs the base hash
+it came from. The base artifact is never edited, and the policy follows the renames ("Sign In"
+keeps the rule "Log In" had).
+
+Tenant B is simulated in our own browser: `--variant tenants/variants/tenant_b.yaml` renames
+page text ("Accounts Overview" becomes "Account Summary", "Log In" becomes "Sign In", ...).
+
+```
+A=artifacts/get_account_balance@0.2.0.json
+V="--variant tenants/variants/tenant_b.yaml"
+uv run cua replay $A --input account_id=<id> --runs-dir evidence                          # base app: success
+uv run cua replay $A --input account_id=<id> $V --runs-dir evidence                       # tenant B, no override: Failure naming the step
+uv run cua replay $A --input account_id=<id> $V --tenant tenants/tenant_b.yaml --runs-dir evidence   # tenant B + override: success
+```
+
 ## Rules worth knowing
 
 - Every action, in discovery, replay and handoff, goes through `policies/parabank.yaml` first.
@@ -134,8 +155,8 @@ and only if none of the real values (inputs, credentials, `--scrub` text) is lef
 
 ```
 src/cua/
-  core/       artifact schema, results, policy, redaction, run log, offline packs (no browser)
-  surface/    the only code that touches Playwright: snapshot, locators, faults, human capture
+  core/       artifact schema, results, policy, redaction, run log, offline packs, tenants
+  surface/    the only code that touches Playwright: snapshot, locators, faults, capture, variants
   discover/   the model loop and the recorder that turns its trace into an artifact
   replay/     the deterministic engine and the app-level detectors
   handoff/    the control lease (control.json) and the run's side of a handoff
@@ -144,5 +165,6 @@ src/cua/
 artifacts/    capability artifacts, versioned
 evidence/     committed demo runs (discovery, replays, failures, handoff)
 offline/      recorded, sanitized app traffic for offline replay
+tenants/      tenant overrides, and simulated tenant variants for demos
 policies/     the safety policy
 ```

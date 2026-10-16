@@ -1,0 +1,25 @@
+# Tenant override: what we know about tenant B, written by a reviewer after one look at its
+# pages. It applies on top of every parasoft/parabank artifact, preconditions included:
+#   uv run cua replay <artifact> --tenant tenants/tenant_b.yaml
+# Base artifacts are never edited. Each run derives `<name>@<version>+tenant_b` with its own
+# hash and records the base hash it came from.
+tenant: tenant_b
+vendor: parasoft/parabank
+note: renamed labels and headings; same pages, paths and flows as the base install
+# UI text as the base artifacts know it -> as tenant B shows it. Only what artifacts rely on:
+# the slogan in the header changed too, and nothing needs to know.
+text:
+  "Customer Login": "Member Sign In"
+  "Username": "Member ID"
+  "Log In": "Sign In"
+  "Account Services": "Member Services"
+  "Accounts Overview": "Account Summary"
+  "Balance*": "Current Balance*"
+  "Available Amount": "Available Balance"
+  "Open New Account": "Open a Share Account"
+  "What type of Account would you like to open?": "Which share type would you like?"
+# How tenant B shows trouble: its login form has a "Sign In" button.
+signals:
+  login_button: "Sign In"
+# Navigation fingerprint of tenant B's overview, so a later change there is still noticed.
+fingerprint: "nav:df4800843bd9a0e7"

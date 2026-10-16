@@ -1,0 +1,21 @@
+{
+  "status": "failure",
+  "kind": "precondition_failed",
+  "step_id": null,
+  "expected": null,
+  "observed": "ensure_session: checkpoint_mismatch at s1: expected 'Customer Login' on the page, not there",
+  "screenshot": "001-post-mismatch.png",
+  "evidence": {
+    "run_id": "2026-10-16T04-13-16Z-replay-get_account_balance-d984",
+    "dir": "evidence/2026-10-16T04-13-16Z-replay-get_account_balance-d984",
+    "artifact": {
+      "id": "get_account_balance@0.2.0",
+      "status": "draft",
+      "content_hash": "sha256:b2d493ef68ed8c659e99d43a15e14605e1549d98889b3a0ac75dc782a5495e76"
+    },
+    "recoveries": [],
+    "interventions": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

@@ -1,0 +1,17 @@
+# Simulated tenant B: ParaBank as a credit union might configure it. Same pages, same flows,
+# its own words for headings, labels and buttons. `cua replay --variant` rewrites page text in
+# our own browser to stand in for a second institution on the same vendor product. The app
+# itself is unchanged and sees the same requests.
+tenant: tenant_b
+note: client-side rewrite of visible page text; attributes and form fields are unchanged
+text:
+  "Customer Login": "Member Sign In"
+  "Username": "Member ID"
+  "Log In": "Sign In"
+  "Account Services": "Member Services"
+  "Accounts Overview": "Account Summary"
+  "Balance*": "Current Balance*"
+  "Available Amount": "Available Balance"
+  "Open New Account": "Open a Share Account"
+  "What type of Account would you like to open?": "Which share type would you like?"
+  "Experience the difference": "Your credit union, online"
