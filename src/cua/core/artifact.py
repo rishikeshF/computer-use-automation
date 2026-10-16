@@ -20,6 +20,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from cua.core.locator import LocatorChain
+from cua.core.outputs import OutputType
 from cua.core.policy import Risk
 from cua.core.template import placeholders
 
@@ -42,7 +43,8 @@ class InputSpec(_Model):
 
 class OutputSpec(_Model):
     name: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")
-    type: Literal["string"] = "string"
+    type: OutputType = "string"  # decimal: "$515.50" is returned as Decimal("515.50")
+    unit: str | None = None  # e.g. USD, when the screen shows a currency sign
     source_step: str  # id of the extract step that produces it
 
 
@@ -56,6 +58,30 @@ class Checkpoint(_Model):
     url_pattern: str | None = None
     landmark_text: str | None = None  # a heading or text that identifies the page
     element_present: LocatorChain | None = None
+
+
+class Condition(_Model):
+    """A state of the screen, checked on replay. Holds when every part holds."""
+
+    page: Checkpoint  # we are on the right page (so an absence below means something)
+    present: tuple[LocatorChain, ...] = ()  # each resolves: the page has finished loading
+    absent: tuple[LocatorChain, ...] = ()  # none resolves: the thing asked for is not there
+
+
+class OutcomeDetector(_Model):
+    """A business answer the app can give instead of the happy path, declared, not inferred.
+
+    Replay checks `when` before each step in `check_before`. If it holds, the run ends as
+    BusinessOutcome(code), not as a Failure. The `present` guard is what keeps the two apart:
+    if the page changed shape, the guard fails too, and the run is a Failure that a person
+    should look at, never a false "account not found".
+    """
+
+    code: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")  # account_not_found
+    message: str
+    check_before: tuple[str, ...] = Field(min_length=1)
+    when: Condition
+    rationale: str = ""  # why the recorder (or a reviewer) believes this, for review
 
 
 class ParamValue(_Model):
@@ -118,7 +144,7 @@ class Capability(_Model):
     preconditions: tuple[str, ...] = ()  # names of capabilities that must hold first
     steps: tuple[Step, ...] = Field(min_length=1)
     success: Checkpoint
-    outcomes: tuple[dict[str, object], ...] = ()  # business outcome detectors, typed in M4
+    outcomes: tuple[OutcomeDetector, ...] = ()
     recovery: tuple[dict[str, object], ...] = ()  # recovery handlers, typed in M4
     risk: Risk
     provenance: Provenance
@@ -145,7 +171,7 @@ class Capability(_Model):
         step_ids = [s.id for s in self.steps]
         if len(set(step_ids)) != len(step_ids):
             found.append("duplicate step ids")
-        used = placeholders(self.model_dump_json(include={"steps", "success"}))
+        used = placeholders(self.model_dump_json(include={"steps", "success", "outcomes"}))
         for name in sorted(used - names):
             found.append(f"placeholder {{{{{name}}}}} is not a declared input")
         for s in self.steps:
@@ -157,6 +183,10 @@ class Capability(_Model):
         for o in self.outputs:
             if o.source_step not in extracts:
                 found.append(f"output {o.name!r} comes from {o.source_step!r}, not an extract step")
+        for d in self.outcomes:
+            for sid in d.check_before:
+                if sid not in step_ids:
+                    found.append(f"outcome {d.code!r} is checked before unknown step {sid!r}")
         worst = max_risk([s.risk for s in self.steps])
         if _RISK_ORDER[worst] > _RISK_ORDER[self.risk]:
             found.append(f"capability risk {self.risk!r} is lower than its riskiest step ({worst})")

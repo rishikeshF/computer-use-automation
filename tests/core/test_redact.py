@@ -61,3 +61,15 @@ def test_structured_data_by_key_and_value() -> None:
 def test_pydantic_models_are_dumped_then_redacted() -> None:
     action = Fill(ref="e1", value="hunter2", sensitive=True)
     assert Redactor({"password": "hunter2"}).data(action)["value"] == "[REDACTED:password]"
+
+
+def test_versioned_artifact_path_is_not_an_email() -> None:
+    path = r"E:\interface\artifacts\get_account_balance@0.1.0.json"
+    assert redact(path) == path
+    assert redact("write to rishi@example.com") == "write to [EMAIL]"
+
+
+def test_content_hash_is_not_masked() -> None:
+    h = "sha256:48f44616ba3c27959fa9e9dd7b0b1bd062d4500a8d0377231a974a710c9e9f89"
+    assert redact(h) == h
+    assert redact("account 49974 hash ab12") == "account *9974 hash ab12"

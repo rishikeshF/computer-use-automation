@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -33,11 +34,27 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def portable(path: str | Path, base: str | Path | None) -> str:
+    """`path` relative to `base`, with forward slashes, for anything written to evidence.
+
+    Committed evidence must not carry one machine's absolute path (like E:/interface/...)."""
+    p = Path(path)
+    if base is not None:
+        with suppress(ValueError):  # outside base: keep it as given
+            p = p.resolve().relative_to(Path(base).resolve())
+    return p.as_posix()
+
+
 class RunLog:
-    def __init__(self, root: str | Path, run_id: str, redactor: Redactor):
+    def __init__(
+        self, root: str | Path, run_id: str, redactor: Redactor, *, base: str | Path | None = None
+    ):
+        """`base` is the directory paths in evidence are written relative to (the repo root)."""
         self.run_id = run_id
         self.dir = Path(root) / run_id
         self.dir.mkdir(parents=True, exist_ok=True)
+        self.base = base
+        self.ref = portable(self.dir, base)  # how evidence refers to this run's directory
         self._redact = redactor
         self._shots = 0
 

@@ -20,7 +20,7 @@ from dotenv import dotenv_values
 
 from cua.core.policy import Policy
 from cua.core.result import Success
-from cua.core.runlog import RunLog, new_run_id
+from cua.core.runlog import RunLog, new_run_id, portable
 from cua.discover.agent import DiscoveryTask, discover
 from cua.discover.recorder import RecorderError, record
 from cua.discover.session import login, logout
@@ -146,7 +146,7 @@ async def _discover(
     run_id = new_run_id(f"discover-{task.name}")
     async with WebSurface.launch(headless=not headed, allowed_url=pol.url_allowed) as web:
         surface = GuardedSurface(web, pol, sensitive=sensitive)
-        log = RunLog(runs_dir, run_id, surface.redact)
+        log = RunLog(runs_dir, run_id, surface.redact, base=ROOT)
         try:
             if creds:
                 ok = await login(surface, task.base_url, *creds)
@@ -188,8 +188,10 @@ async def _discover(
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     path = artifacts_dir / f"{cap.id}.json"
     path.write_text(cap.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    log.event("artifact", path=str(path), content_hash=cap.content_hash, steps=len(cap.steps))
-    typer.echo(f"\nDraft artifact: {path}\nEvidence: {log.dir}")
+    log.event(
+        "artifact", path=portable(path, ROOT), content_hash=cap.content_hash, steps=len(cap.steps)
+    )
+    typer.echo(f"\nDraft artifact: {portable(path, ROOT)}\nEvidence: {log.ref}")
     return 0
 
 

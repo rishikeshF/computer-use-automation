@@ -8,6 +8,7 @@ served by Playwright route fulfilment, so nothing leaves the machine.
 import json
 import re
 from collections.abc import AsyncIterator, Callable, Sequence
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -190,6 +191,8 @@ async def test_balance_discovery_records_a_parameterized_artifact(
     )
     assert isinstance(run.result, Success)
     assert run.outputs == {"balance": "$515.50", "available": "$500.00"}
+    assert run.result.outputs == {"balance": Decimal("515.50"), "available": Decimal("500.00")}
+    assert run.result.evidence.raw_outputs == run.outputs  # the screen text is kept
 
     # The model found the account by its redacted name; it never saw the number itself.
     assert not any(ACCOUNT in s for s in llm.seen)
@@ -211,10 +214,13 @@ async def test_balance_discovery_records_a_parameterized_artifact(
     )
     body = cap.model_dump_json()
     assert ACCOUNT not in body
-    assert cap.steps[0].post.url_pattern == "/bank/activity.htm?id={{account_id}}"
-    assert cap.steps[0].post.landmark_text == "Account Details"
+    assert cap.steps[0].action == "navigate" and cap.steps[0].value == "{{base_url}}/overview.htm"
+    assert cap.steps[1].post.url_pattern == "/bank/activity.htm?id={{account_id}}"
+    assert cap.steps[1].post.landmark_text == "Account Details"
     assert [o.name for o in cap.outputs] == ["balance", "available"]
     assert cap.problems() == []
+    (missing,) = cap.outcomes  # the overview has a header row, so the guard can be proven
+    assert missing.code == "account_not_found" and missing.check_before == ("s2",)
 
 
 async def test_password_is_typed_without_the_model_seeing_it(

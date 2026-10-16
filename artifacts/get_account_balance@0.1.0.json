@@ -3,7 +3,7 @@
   "id": "get_account_balance@0.1.0",
   "name": "get_account_balance",
   "version": "0.1.0",
-  "content_hash": "sha256:48f44616ba3c27959fa9e9dd7b0b1bd062d4500a8d0377231a974a710c9e9f89",
+  "content_hash": "sha256:b7f395ac42fc605f08a91525e0a9dc250d1fc53eee2bd8768b8a42457f97715d",
   "status": "draft",
   "description": "Find the balance and the available amount of the given account",
   "app": {
@@ -24,13 +24,15 @@
   "outputs": [
     {
       "name": "balance",
-      "type": "string",
-      "source_step": "s1"
+      "type": "decimal",
+      "unit": "USD",
+      "source_step": "s2"
     },
     {
       "name": "available",
-      "type": "string",
-      "source_step": "s2"
+      "type": "decimal",
+      "unit": "USD",
+      "source_step": "s3"
     }
   ],
   "preconditions": [
@@ -39,6 +41,29 @@
   "steps": [
     {
       "id": "s1",
+      "intent": "Open the Accounts Overview page",
+      "action": "navigate",
+      "target": null,
+      "value": "{{base_url}}/overview.htm",
+      "pre": null,
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Accounts Overview",
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s2",
       "intent": "Read balance for the account",
       "action": "extract",
       "target": {
@@ -53,7 +78,11 @@
         ]
       },
       "value": "balance",
-      "pre": null,
+      "pre": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Accounts Overview",
+        "element_present": null
+      },
       "post": {
         "url_pattern": "/parabank/overview.htm",
         "landmark_text": null,
@@ -71,7 +100,7 @@
       "review_notes": []
     },
     {
-      "id": "s2",
+      "id": "s3",
       "intent": "Read available amount",
       "action": "extract",
       "target": {
@@ -86,7 +115,11 @@
         ]
       },
       "value": "available",
-      "pre": null,
+      "pre": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Accounts Overview",
+        "element_present": null
+      },
       "post": {
         "url_pattern": "/parabank/overview.htm",
         "landmark_text": null,
@@ -109,13 +142,64 @@
     "landmark_text": "Accounts Overview",
     "element_present": null
   },
-  "outcomes": [],
+  "outcomes": [
+    {
+      "code": "account_not_found",
+      "message": "No account with the given account_id on Accounts Overview.",
+      "check_before": [
+        "s2",
+        "s3"
+      ],
+      "when": {
+        "page": {
+          "url_pattern": "/parabank/overview.htm",
+          "landmark_text": "Accounts Overview",
+          "element_present": null
+        },
+        "present": [
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "role_name",
+                "role": "columnheader",
+                "name": "Account"
+              }
+            ]
+          },
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "role_name",
+                "role": "columnheader",
+                "name": "Balance*"
+              }
+            ]
+          }
+        ],
+        "absent": [
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "role_name",
+                "role": "link",
+                "name": "{{account_id}}"
+              }
+            ]
+          }
+        ]
+      },
+      "rationale": "account_id was shown as a link named by its value on Accounts Overview. With the table loaded, its absence means the input does not exist."
+    }
+  ],
   "recovery": [],
   "risk": "read_only",
   "provenance": {
-    "discovered_at": "2026-10-16T01:28:22+00:00",
+    "discovered_at": "2026-10-16T01:44:10+00:00",
     "model": "claude-sonnet-5-5",
-    "run_id": "2026-10-16T01-28-08Z-discover-get_account_balance-6465",
+    "run_id": "2026-10-16T01-43-54Z-discover-get_account_balance-70ce",
     "goal": "Find the balance and the available amount of the given account",
     "reviewed_by": null
   },

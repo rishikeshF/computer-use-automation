@@ -36,11 +36,14 @@ _SHAPES: list[tuple[re.Pattern[str], str]] = [
     ),
     (re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE), "Bearer [REDACTED]"),
     (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"), "[REDACTED:api_key]"),
-    (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"), "[EMAIL]"),
+    # Every domain label holds a letter and the TLD is letters only, so a versioned file name
+    # like "get_account_balance@0.1.0.json" is not an email.
+    (re.compile(r"\b[\w.+-]+@(?:[\w-]*[A-Za-z][\w-]*\.)+[A-Za-z]{2,}\b"), "[EMAIL]"),
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[SSN]"),
 ]
-# 5 to 17 digits standing alone: account or card number. Not part of an amount like $12345.67.
-_LONG_NUMBER = re.compile(r"(?<![\d$.,])\d{5,17}(?!\d|[.,]\d)")
+# 5 to 17 digits standing alone: account or card number. Not part of an amount like $12345.67,
+# and not part of a hex string such as a content hash (no hex letter on either side).
+_LONG_NUMBER = re.compile(r"(?<![\da-fA-F$.,])\d{5,17}(?![\da-fA-F]|[.,]\d)")
 
 
 def _mask_number(m: re.Match[str]) -> str:

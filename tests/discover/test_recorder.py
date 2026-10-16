@@ -69,7 +69,7 @@ def make(trace: list[TraceStep] = TRACE, **kw: object) -> Capability:
 
 def test_click_target_is_parameterized_and_checkpointed() -> None:
     cap = make()
-    click = cap.steps[0]
+    click = cap.steps[1]  # s1 is the navigate to the start page
     assert click.target is not None
     assert click.target.strategies[0] == RoleName(role="link", name="{{account_id}}")
     assert click.post.url_pattern == "/app/activity.htm?id={{account_id}}"
@@ -78,7 +78,7 @@ def test_click_target_is_parameterized_and_checkpointed() -> None:
 
 
 def test_extract_is_found_by_position_never_by_value() -> None:
-    step = make().steps[1]
+    step = make().steps[2]
     assert step.target is not None
     kinds = [s.kind for s in step.target.strategies]
     assert "role_name" not in kinds  # "$515.50" will be different next time
@@ -89,7 +89,7 @@ def test_extract_is_found_by_position_never_by_value() -> None:
 def test_artifact_is_coherent_and_free_of_the_value() -> None:
     cap = make()
     assert cap.problems() == []
-    assert cap.outputs[0].name == "balance" and cap.outputs[0].source_step == "s2"
+    assert cap.outputs[0].name == "balance" and cap.outputs[0].source_step == "s3"
     assert "13344" not in cap.model_dump_json()
     assert cap.content_hash == cap.behavior_hash()
     assert cap.risk == "read_only"
@@ -140,8 +140,8 @@ def test_fill_values_become_params() -> None:
         inputs={"username": "alice", "password": "hunter2"},
         sensitive={"username", "password"},
     )
-    assert cap.steps[0].value == ParamValue(param="username")  # literal recognized as the input
-    assert cap.steps[1].value == ParamValue(param="password")
+    assert cap.steps[1].value == ParamValue(param="username")  # literal recognized as the input
+    assert cap.steps[2].value == ParamValue(param="password")
     assert cap.risk == "reversible"
 
 
@@ -157,7 +157,7 @@ def test_secret_in_typed_text_becomes_a_placeholder() -> None:
         url_after=f"{BASE}/x.htm",
     )
     cap = make([note], inputs={"password": "hunter2"}, sensitive={"password"})
-    assert cap.steps[0].value == "pin is {{password}}!"
+    assert cap.steps[1].value == "pin is {{password}}!"
 
 
 def test_recorder_refuses_to_write_a_secret() -> None:
@@ -228,4 +228,60 @@ def test_landmark_is_the_section_heading_not_the_sidebar() -> None:
     )
     cap = make([read])
     assert cap.success.landmark_text == "Accounts Overview"
-    assert cap.steps[0].post.landmark_text is None  # reading does not change the page
+    assert cap.steps[0].post.landmark_text == "Accounts Overview"  # the start page, checked
+    assert cap.steps[1].pre == cap.steps[0].post
+    assert cap.steps[1].post.landmark_text is None  # reading does not change the page
+
+
+# The real ParaBank overview, as the snapshot sees it: header row, then one row per account.
+PARABANK = (
+    n("side", "heading", "Account Services", bbox=(0, 100, 150, 20)),
+    n("main", "heading", "Accounts Overview", bbox=(200, 100, 400, 30)),
+    n("h1", "columnheader", "Account", bbox=(200, 150, 100, 20)),
+    n("h2", "columnheader", "Balance*", bbox=(300, 150, 100, 20)),
+    n("acct", "link", "13344", table=TableContext(col="Account"), bbox=(200, 180, 100, 20)),
+    n(
+        "bal",
+        "cell",
+        "$515.50",
+        table=TableContext(row="13344", col="Balance*"),
+        bbox=(300, 180, 100, 20),
+    ),
+)
+READ_BALANCE = TraceStep(
+    tool="extract",
+    intent="Read the balance",
+    value="balance",
+    target=PARABANK[5],
+    page=PARABANK,
+    url_before=f"{BASE}/overview.htm",
+    url_after=f"{BASE}/overview.htm",
+    headings_after=("Account Services", "Accounts Overview"),
+)
+
+
+def test_account_not_found_is_declared_with_a_guard() -> None:
+    cap = make([READ_BALANCE])
+    (d,) = cap.outcomes
+    assert d.code == "account_not_found"
+    assert d.check_before == ("s2",)
+    assert d.when.page == cap.steps[1].pre  # only meaningful on the right page
+    assert d.when.absent[0].strategies == (RoleName(role="link", name="{{account_id}}"),)
+    # The headers must be there, so a reshaped table is a Failure, not "account not found".
+    assert [g.strategies[0] for g in d.when.present] == [
+        RoleName(role="columnheader", name="Account"),
+        RoleName(role="columnheader", name="Balance*"),
+    ]
+    assert "13344" not in cap.model_dump_json()
+    assert cap.problems() == []
+
+
+def test_no_detector_without_a_guard() -> None:
+    """TRACE's overview has no header row, so an absence could not be told apart from a broken
+    page. The recorder leaves the outcome to a reviewer rather than guess."""
+    assert make().outcomes == ()
+
+
+def test_amount_output_is_typed() -> None:
+    (out,) = make([READ_BALANCE]).outputs
+    assert (out.type, out.unit) == ("decimal", "USD")

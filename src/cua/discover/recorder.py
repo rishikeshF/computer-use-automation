@@ -14,6 +14,7 @@ control again on a page the model has never seen, with different data. Three rul
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from typing import Literal
 
@@ -23,7 +24,9 @@ from cua.core.artifact import (
     AppInfo,
     Capability,
     Checkpoint,
+    Condition,
     InputSpec,
+    OutcomeDetector,
     OutputSpec,
     ParamValue,
     Provenance,
@@ -31,7 +34,15 @@ from cua.core.artifact import (
     StepValue,
     max_risk,
 )
-from cua.core.locator import LabelText, LocatorChain, RoleName, TableCell, TextAnchor
+from cua.core.locator import (
+    LabelText,
+    LocatorChain,
+    LocatorStrategy,
+    RoleName,
+    TableCell,
+    TextAnchor,
+)
+from cua.core.outputs import infer_type
 from cua.core.policy import Risk
 from cua.core.runlog import utc_now
 from cua.core.template import PLACEHOLDER, placeholders, templatize
@@ -83,11 +94,27 @@ def record(
         raise RecorderError("nothing to record: the run took no actions")
     params = {k: v for k, v in inputs.items() if v}
     steps: list[Step] = []
+    traced: dict[str, TraceStep] = {}  # step id -> the trace step it was recorded from
     outputs: list[OutputSpec] = []
     prev_headings = _heading_names(trace[0].page)
 
+    # A replay can start anywhere (a fresh login lands on whatever page the app picks), so the
+    # flow must begin by going to the page it was discovered on, and check it got there.
+    if trace[0].tool != "navigate":
+        start = _page_checkpoint(trace[0], params)
+        steps.append(
+            Step(
+                id="s1",
+                intent=f"Open the {start.landmark_text or 'starting'} page",
+                action="navigate",
+                value=_url_value(trace[0].url_before, base_url, params),
+                post=start,
+            )
+        )
+
     for i, t in enumerate(trace, start=1):
-        step_id = f"s{i}"
+        step_id = f"s{len(steps) + 1}"
+        traced[step_id] = t
         target: LocatorChain | None = None
         notes: tuple[str, ...] = ()
         if t.target is not None:
@@ -97,9 +124,10 @@ def record(
             value = _param_value(t.value, params)
         elif t.tool == "navigate" and t.value is not None:
             value = _url_value(t.value, base_url, params)
-        elif t.tool == "extract" and t.value is not None:
+        elif t.tool == "extract" and t.value is not None and t.target is not None:
             value = t.value
-            outputs.append(OutputSpec(name=t.value, source_step=step_id))
+            type_, unit = infer_type(t.target.name)
+            outputs.append(OutputSpec(name=t.value, type=type_, unit=unit, source_step=step_id))
 
         changed_page = t.url_after != t.url_before or t.headings_after != prev_headings
         # The page this step lands on is the page the next step acts on, so the next target
@@ -117,6 +145,8 @@ def record(
                 action=t.tool,
                 target=target,
                 value=value,
+                # Acting on a control: first check we are on the page it was recorded on.
+                pre=_page_checkpoint(t, params) if t.target is not None else None,
                 post=post,
                 risk=t.risk,
                 review_notes=notes,
@@ -139,6 +169,7 @@ def record(
         preconditions=tuple(preconditions),
         steps=tuple(steps),
         success=success,
+        outcomes=tuple(_not_found_detectors(steps, traced, params)),
         risk=max_risk([s.risk for s in steps]),
         provenance=Provenance(discovered_at=utc_now(), model=model, run_id=run_id, goal=goal),
     ).sealed()
@@ -148,6 +179,86 @@ def record(
         raise RecorderError("; ".join(problems))
     _assert_no_secrets(cap, {k: v for k, v in params.items() if k in sensitive})
     return cap
+
+
+def _page_checkpoint(t: TraceStep, params: Mapping[str, str]) -> Checkpoint:
+    """The page a step acts on, as it was when the step was recorded."""
+    landmark = _section_heading(t.target, t.page) if t.target is not None else None
+    if landmark is None:
+        landmark = next((h for h in _heading_names(t.page) if _no_data(h)), None)
+    return Checkpoint(url_pattern=url_pattern(t.url_before, params), landmark_text=landmark)
+
+
+# ---- business outcomes -------------------------------------------------------------------------
+
+
+def _not_found_detectors(
+    steps: Sequence[Step], traced: Mapping[str, TraceStep], params: Mapping[str, str]
+) -> list[OutcomeDetector]:
+    """For each input that picks out a row on a page ("the row of {{account_id}}"), declare what
+    it means when that row is missing: the thing the input names does not exist.
+
+    Derived from what the run saw, then written down so a reviewer reads it and replay never
+    has to guess:
+      - absent:  the control that showed the input's value (the account link), found by the
+                 input, so replay checks it for whatever value the caller passes
+      - present: the column headers of that table, proving it loaded and kept its shape.
+                 Without them, a renamed column would look like a missing account.
+    If any part cannot be proven on the recorded page, no detector is written.
+    """
+    detectors: list[OutcomeDetector] = []
+    for param, value in params.items():
+        uses = [
+            s.id
+            for s in steps
+            if s.target is not None and any(_uses(st, param) for st in s.target.strategies)
+        ]
+        if not uses:
+            continue
+        first = next(s for s in steps if s.id == uses[0])
+        t = traced[first.id]
+        identity = next((n for n in t.page if n.name == value and n.role != "text"), None)
+        if identity is None or first.pre is None:
+            continue
+        absent, notes = locator_for(identity, t.page, params)
+        if notes or not any(_uses(st, param) for st in absent.strategies):
+            continue
+        guards = _column_guards([identity, t.target], t.page)
+        if not guards:
+            continue
+        noun = re.sub(r"_(id|number|no|num)$", "", param)
+        where = first.pre.landmark_text or "the page"
+        detectors.append(
+            OutcomeDetector(
+                code=f"{noun}_not_found",
+                message=f"No {noun.replace('_', ' ')} with the given {param} on {where}.",
+                check_before=tuple(uses),
+                when=Condition(page=first.pre, present=tuple(guards), absent=(absent,)),
+                rationale=(
+                    f"{param} was shown as a {identity.role} named by its value on {where}. "
+                    "With the table loaded, its absence means the input does not exist."
+                ),
+            )
+        )
+    return detectors
+
+
+def _column_guards(nodes: Sequence[Node | None], page: Sequence[Node]) -> list[LocatorChain]:
+    """Proven chains for the column headers above `nodes`, in order, without repeats."""
+    guards: list[LocatorChain] = []
+    for node in nodes:
+        col = node.table.col if node is not None and node.table is not None else None
+        if not col:
+            continue
+        header = RoleName(role="columnheader", name=col)
+        chain = LocatorChain(strategies=(header,))
+        if chain not in guards and len(match_nodes(header, page)) == 1:
+            guards.append(chain)
+    return guards
+
+
+def _uses(s: LocatorStrategy, param: str) -> bool:
+    return any(isinstance(v, str) and param in placeholders(v) for _, v in s)
 
 
 # ---- locators ----------------------------------------------------------------------------------

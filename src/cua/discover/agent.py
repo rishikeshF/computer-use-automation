@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pydantic import ValidationError
 
 from cua.core.action import Action, Click, Fill, Navigate, Select
+from cua.core.outputs import convert, infer_type
 from cua.core.policy import Risk
 from cua.core.result import Evidence, Failure, NeedsHuman, RunResult, Success
 from cua.core.runlog import RunLog
@@ -102,7 +103,7 @@ async def discover(
 ) -> DiscoveryRun:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + task.timeout_s
-    evidence = Evidence(run_id=log.run_id, dir=str(log.dir))
+    evidence = Evidence(run_id=log.run_id, dir=log.ref)
     params = {**task.inputs, "base_url": task.base_url.rstrip("/")}
     trace: list[TraceStep] = []
     outputs: dict[str, str] = {}
@@ -177,8 +178,12 @@ async def discover(
                     )
                 ]
                 continue
-            log.event("done", summary=args.summary)
-            return finish(Success(outputs=outputs, evidence=evidence))
+            # Typed the same way the recorder will declare them, so discovery's answer matches
+            # what replay of the artifact will return.
+            typed = {k: convert(v, infer_type(v)[0]) for k, v in outputs.items()}
+            log.event("done", summary=args.summary, raw_outputs=outputs)
+            evidence = evidence.model_copy(update={"raw_outputs": dict(outputs)})
+            return finish(Success(outputs=typed, evidence=evidence))
         if isinstance(args, ReasonIn):
             if call.name == "give_up":
                 return finish(Failure(kind="gave_up", observed=args.reason, evidence=evidence))

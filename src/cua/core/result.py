@@ -12,6 +12,7 @@ Recoverable hiccups (a re-login, a retried load) never surface as a status. They
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,13 +24,14 @@ class _Model(BaseModel):
 
 class Evidence(_Model):
     run_id: str
-    dir: str  # where the redacted log and screenshots are
+    dir: str  # where the redacted log and screenshots are, relative to the repo
     recoveries: tuple[str, ...] = ()
+    raw_outputs: dict[str, str] = {}  # outputs exactly as the screen showed them
 
 
 class Success(_Model):
     status: Literal["success"] = "success"
-    outputs: dict[str, str] = {}
+    outputs: dict[str, Decimal | str] = {}  # typed per the artifact: "$515.50" -> 515.50
     evidence: Evidence
 
 
