@@ -94,20 +94,38 @@ same Nodes from Windows UI Automation (or macOS accessibility); replay, policy, 
 schema do not change. A surface with no element tree would use the `BBox` strategy, which exists
 in the schema and is refused on web.
 
-**Tenants (built in M7).** Tenants of one vendor product differ in words, not flows. So an
-artifact is recorded once and each tenant gets one app-wide override (`tenants/tenant_b.yaml`):
-UI text as the base knows it, mapped to the tenant's words; the tenant's app signals (its login
-button); its navigation fingerprint. Replay derives `get_account_balance@0.2.0+tenant_b` with its
-own hash and logs the base hash; the base file is never edited. Only whole UI-text values are
-renamed (locator names, labels, anchors, columns, landmarks), never placeholders or URLs. The
-policy follows the renames, so "Sign In" keeps the reversible rule "Log In" had and "Open a Share
-Account" stays irreversible. Without that, every renamed button would need approval.
+**Tenants.** Tenants of one vendor product differ in words, not flows. So an artifact is
+recorded once and each tenant gets one app-wide override (`tenants/tenant_b.yaml`): UI text as
+the base knows it, mapped to the tenant's words; the tenant's app signals (its login button);
+the navigation fingerprint of each page an artifact starts on, keyed by path. Replay derives
+`get_account_balance@0.2.0+tenant_b` with its own hash and logs the base hash; the base file is
+never edited. Only whole UI-text values are renamed (locator names, labels, anchors, columns,
+landmarks), never placeholders, URLs, codes or messages. Outcome messages stay in the base
+language on every tenant: callers branch on the code, not the text.
+
+**Producing an override for a real tenant.** (1) Replay the base artifacts on the tenant with no
+override. Each stops at the first step that no longer fits and names it with the text it
+expected, so the list of words to map comes from failures, not guesses. (2) Read the tenant's
+words for those controls, either from that run's screenshots or by running discovery on the
+tenant with the same goal and lining its steps up with the base steps. (3) Record the
+fingerprint of each start page from a passing run. (4) Review and approve the file. Today step
+(2) is manual (`tenant_b.yaml` was written from one look at the pages); the step-by-step diff
+is a cut.
+
+**Overrides are a policy change, not a copy edit.** The policy follows the renames, so "Sign In"
+keeps the reversible rule "Log In" had and "Open a Share Account" stays irreversible; without
+that, every renamed button would need approval. The flip side: a wrong mapping changes risk
+classification. Mapping a base label onto a tenant control that moves money would let it run as
+whatever the base control was. So an override gets the same review as `policies/parabank.yaml`,
+by someone who checks each renamed control's risk, not only its spelling.
 
 Tenant B is simulated in our own browser (`tenants/variants/tenant_b.yaml` renames page text).
 Evidence, all live: the base artifact passes on the base app; on tenant B it fails at the first
-step that no longer fits, naming it, with no false business answer; with the override it passes,
-and `account_not_found` still works. Drift per tenant shows as a fingerprint warning, then as
-checkpoint failures; a re-discovery on that tenant yields a candidate override to review.
+step that no longer fits, naming it, with no false business answer; with the override it passes
+with no warning, and `account_not_found` still works. The fingerprint is checked only for the
+capability the caller asked for, on its own start page; preconditions such as sign-in pass
+through other pages and are not checked. Later drift on a tenant shows as a fingerprint warning,
+then as checkpoint failures.
 
 ## 5. Escalation & handoff
 
@@ -128,7 +146,7 @@ browser; capture logs each click and selection with its policy risk, never typed
 re-observes and verifies the step's checkpoint before going on (a person's irreversible click is
 recorded as a commit). `decline`: the run ends. Answers name their request, so a yes cannot land
 on another. If control changed hands unseen, the epoch differs and the run re-checks. Evidence:
-`evidence/*-replay-open_new_account-4335` pauses at the irreversible step, is approved, completes.
+`evidence/*-replay-open_new_account-8748` pauses at the irreversible step, is approved, completes.
 The operator UI is a CLI on purpose; a web console would read and write the same lease.
 
 ## 6. Safety
@@ -146,7 +164,6 @@ The operator UI is a CLI on purpose; a web console would read and write the same
 Limits: shape-based redaction cannot catch names or addresses, which must be declared (`--scrub`
 for recordings). A person's click is checked and logged as it happens, not blocked beforehand;
 denied page loads are still blocked. Dialogs are dismissed even while a person holds control.
-An operator named like the test username is logged as `[REDACTED:username]`.
 
 ## 7. Cuts
 
@@ -154,8 +171,9 @@ An operator named like the test username is logged as `[REDACTED:username]`.
 - **Recorder-derived outcomes.** `account_not_found` is derived from the run;
   `invalid_credentials` and `funding_account_not_found` were added in review (`cua seal`). Next:
   derive "option missing" for select steps.
-- **Tenant overrides beyond text**: per-tenant URL prefixes or extra steps; approving an
-  effective artifact separately from its base.
+- **Tenant overrides beyond text**: a tool that diffs a tenant's discovered artifact against the
+  base to propose the text map; per-tenant URL prefixes or extra steps; approving an effective
+  artifact separately from its base.
 - **Desktop surface, real operator console, replay-N stability scoring.** Seams are in place.
 - **Offline coverage**: only `get_account_balance` has a pack; `session_expire` cannot trigger
   offline. Discovery still signs in with a small scripted login.

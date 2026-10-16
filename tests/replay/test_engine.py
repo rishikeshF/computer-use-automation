@@ -416,7 +416,8 @@ async def run_tenant(
     account: str,
     override: TenantOverride | None,
     faults: FaultPlan | None = None,
-) -> RunResult:
+) -> tuple[RunResult, list[str]]:
+    """The result, and the warnings the run log recorded (preconditions included)."""
     cap, session = BALANCE, SESSION
     signals = PARABANK
     if override is not None:
@@ -434,23 +435,25 @@ async def run_tenant(
     )
 
     async def sign_in() -> RunResult:
-        opts = ReplayOptions(base_url=BASE, signals=signals)
+        opts = ReplayOptions(base_url=BASE, signals=signals, check_fingerprint=False)
         return await replay(session, CREDS, s.surface, s.log, opts)
 
     opts = ReplayOptions(
         base_url=BASE, preconditions={"ensure_session": sign_in}, hooks=s.faults, signals=signals
     )
     try:
-        return await replay(cap, {"account_id": account}, s.surface, s.log, opts)
+        result = await replay(cap, {"account_id": account}, s.surface, s.log, opts)
     finally:
         await s.web.page.context.close()
+    events = [json.loads(line) for line in (s.log.dir / "log.jsonl").read_text().splitlines()]
+    return result, [e["message"] for e in events if e["event"] == "warning"]
 
 
 async def test_base_artifact_on_tenant_b_fails_cleanly(browser: Browser, tmp_path: Path) -> None:
     """Without the override the run stops at the first step that does not fit and says so.
     It never turns into a wrong answer: a missing account still is not "not found"."""
     for account in (GOOD, BAD):
-        result = await run_tenant(browser, tmp_path / account, account, None)
+        result, _ = await run_tenant(browser, tmp_path / account, account, None)
         assert isinstance(result, Failure), result
         assert result.kind == "precondition_failed"
         # Named exactly: sign-in step s2 looks for the field labelled "Username", now "Member ID".
@@ -460,7 +463,7 @@ async def test_base_artifact_on_tenant_b_fails_cleanly(browser: Browser, tmp_pat
 async def test_base_artifact_plus_override_runs_on_tenant_b(
     browser: Browser, tmp_path: Path
 ) -> None:
-    result = await run_tenant(browser, tmp_path, GOOD, TENANT_B)
+    result, _ = await run_tenant(browser, tmp_path, GOOD, TENANT_B)
     assert isinstance(result, Success), result
     assert result.outputs == {"balance": Decimal("515.50"), "available": Decimal("500.00")}
     assert result.evidence.artifact is not None
@@ -468,7 +471,7 @@ async def test_base_artifact_plus_override_runs_on_tenant_b(
 
 
 async def test_business_outcomes_carry_over_to_tenant_b(browser: Browser, tmp_path: Path) -> None:
-    result = await run_tenant(browser, tmp_path, BAD, TENANT_B)
+    result, _ = await run_tenant(browser, tmp_path, BAD, TENANT_B)
     assert isinstance(result, BusinessOutcome) and result.code == "account_not_found", result
 
 
@@ -477,6 +480,38 @@ async def test_tenant_signals_keep_session_recovery_working(
 ) -> None:
     """Tenant B's login button says "Sign In". The override's signals tell the detector, so an
     expired session is still recognised and recovered rather than read as a broken page."""
-    result = await run_tenant(browser, tmp_path, GOOD, TENANT_B, FaultPlan(session_expire=True))
+    result, _ = await run_tenant(browser, tmp_path, GOOD, TENANT_B, FaultPlan(session_expire=True))
     assert isinstance(result, Success), result
     assert result.evidence.recoveries == ("s1: session expired; signed in again, resumed at s1",)
+
+
+async def test_fingerprint_is_checked_on_the_capability_not_its_preconditions(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """Both start pages have a stale fingerprint. Only the capability's own start page counts:
+    sign-in is a step on the way, and a warning from it would be about the wrong page."""
+    stale = TENANT_B.model_copy(
+        update={"fingerprints": {"/index.htm": "nav:stale", "/overview.htm": "nav:stale"}}
+    )
+    result, logged = await run_tenant(browser, tmp_path, GOOD, stale)
+    assert isinstance(result, Success), result
+    assert len(result.evidence.warnings) == 1
+    assert result.evidence.warnings[0].startswith("app navigation changed since discovery")
+    assert logged == list(result.evidence.warnings)
+
+
+async def test_matching_tenant_fingerprint_gives_no_warning(
+    browser: Browser, tmp_path: Path
+) -> None:
+    # What tenant B's overview looks like, read from a first run's warning.
+    _, logged = await run_tenant(
+        browser,
+        tmp_path / "probe",
+        GOOD,
+        TENANT_B.model_copy(update={"fingerprints": {"/overview.htm": "nav:stale"}}),
+    )
+    seen = logged[0].rsplit("-> ", 1)[1].rstrip(")")
+    current = TENANT_B.model_copy(update={"fingerprints": {"/overview.htm": seen}})
+    result, logged = await run_tenant(browser, tmp_path / "run", GOOD, current)
+    assert isinstance(result, Success), result
+    assert result.evidence.warnings == () and logged == []

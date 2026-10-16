@@ -21,5 +21,8 @@ text:
 # How tenant B shows trouble: its login form has a "Sign In" button.
 signals:
   login_button: "Sign In"
-# Navigation fingerprint of tenant B's overview, so a later change there is still noticed.
-fingerprint: "nav:df4800843bd9a0e7"
+# Navigation fingerprint of each page an artifact opens on, as tenant B shows it, so a later
+# change there is still noticed. Keyed by path relative to the app root.
+fingerprints:
+  "/": "nav:1180982cc586fdcb"             # login page: its links did not change
+  "/overview.htm": "nav:df4800843bd9a0e7"

@@ -1,11 +1,11 @@
 {
   "status": "success",
   "outputs": {
-    "new_account_id": "*9338"
+    "new_account_id": "*6119"
   },
   "evidence": {
-    "run_id": "2026-10-16T04-02-31Z-replay-open_new_account-4335",
-    "dir": "evidence/2026-10-16T04-02-31Z-replay-open_new_account-4335",
+    "run_id": "2026-10-16T21-55-32Z-replay-open_new_account-8748",
+    "dir": "evidence/2026-10-16T21-55-32Z-replay-open_new_account-8748",
     "artifact": {
       "id": "open_new_account@0.2.0",
       "status": "draft",
@@ -13,10 +13,10 @@
     },
     "recoveries": [],
     "interventions": [
-      "s5: approved by [REDACTED:username]"
+      "s5: approved by rishikesh"
     ],
     "raw_outputs": {
-      "new_account_id": "*9338"
+      "new_account_id": "*6119"
     },
     "warnings": []
   }

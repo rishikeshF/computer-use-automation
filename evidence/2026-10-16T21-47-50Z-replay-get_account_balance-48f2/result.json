@@ -1,12 +1,12 @@
 {
   "status": "success",
   "outputs": {
-    "balance": "415.50",
-    "available": "415.50"
+    "balance": "515.50",
+    "available": "515.50"
   },
   "evidence": {
-    "run_id": "2026-10-16T04-13-34Z-replay-get_account_balance-957f",
-    "dir": "evidence/2026-10-16T04-13-34Z-replay-get_account_balance-957f",
+    "run_id": "2026-10-16T21-47-50Z-replay-get_account_balance-48f2",
+    "dir": "evidence/2026-10-16T21-47-50Z-replay-get_account_balance-48f2",
     "artifact": {
       "id": "get_account_balance@0.2.0+tenant_b",
       "status": "draft",
@@ -15,8 +15,8 @@
     "recoveries": [],
     "interventions": [],
     "raw_outputs": {
-      "balance": "$415.50",
-      "available": "$415.50"
+      "balance": "$515.50",
+      "available": "$515.50"
     },
     "warnings": []
   }

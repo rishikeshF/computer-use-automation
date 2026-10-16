@@ -97,6 +97,9 @@ class ReplayOptions:
     handoff: Handoff | None = None
     signals: AppSignals = PARABANK
     max_recoveries: int = 2
+    # Compare the start page's navigation with the artifact's fingerprint. Off for preconditions:
+    # the run reports on the capability the caller asked for, not on the pages it passed through.
+    check_fingerprint: bool = True
 
 
 class _Stop(Exception):
@@ -244,7 +247,7 @@ class _Run:
 
         after = [d for d in self.cap.outcomes if step.id in d.check_after]
         obs = await self._wait(step.post, step, "post", outcomes=after)
-        if first and step.action == "navigate":
+        if first and step.action == "navigate" and self.opts.check_fingerprint:
             self._check_fingerprint(obs)
         shot = await self.s.observe(screenshot=True)
         self.log.event(

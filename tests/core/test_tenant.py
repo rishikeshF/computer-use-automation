@@ -3,8 +3,8 @@
 import pytest
 
 from cua.core.locator import RoleName, TableCell
-from cua.core.tenant import OverrideError, TenantOverride, apply
-from tests.fakebank import BALANCE
+from cua.core.tenant import OverrideError, TenantOverride, apply, start_path
+from tests.fakebank import BALANCE, SESSION
 
 TENANT_B = TenantOverride(
     tenant="tenant_b",
@@ -15,7 +15,7 @@ TENANT_B = TenantOverride(
         "Not used by this capability": "Fine",
     },
     signals={"login_button": "Sign In"},
-    fingerprint="nav:tenantb",
+    fingerprints={"/overview.htm": "nav:tenantb"},
 )
 
 
@@ -47,3 +47,12 @@ def test_override_for_another_product_is_refused() -> None:
     other = TENANT_B.model_copy(update={"vendor": "acme/core"})
     with pytest.raises(OverrideError, match="not test"):
         apply(BALANCE, other)
+
+
+def test_fingerprint_is_the_one_for_the_artifacts_own_start_page() -> None:
+    assert start_path(BALANCE) == "/overview.htm"
+    assert start_path(SESSION) == "/index.htm"
+    # Sign-in opens on another page. The overview's fingerprint would be a false alarm there,
+    # so with no entry for its page there is no fingerprint to check.
+    session, _ = apply(SESSION, TENANT_B)
+    assert session.app.app_version_fingerprint is None

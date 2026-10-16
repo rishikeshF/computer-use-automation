@@ -8,7 +8,8 @@ So an artifact is recorded once, on a base install, and a tenant gets a small ov
         vendor        the product it applies to (must match the artifact's app.vendor)
         text          UI text as the base artifacts know it -> as this tenant shows it
         signals       how this tenant shows trouble (its login button, its error heading)
-        fingerprint   this tenant's navigation fingerprint, so drift on it is still noticed
+        fingerprints  this tenant's navigation fingerprint per start page, so drift on it is
+                      still noticed ("/overview.htm" for artifacts that open on the overview)
 
 One override serves every capability of the app, preconditions included: renaming "Log In" once
 fixes sign-in for all of them. apply() derives the tenant's effective artifact. The base file is
@@ -31,6 +32,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from cua.core.artifact import Capability
+from cua.core.template import render
+from cua.core.url import canonical_path
 
 # Keys of a locator strategy that hold UI text (as opposed to kind, role, direction, ...).
 _STRATEGY_TEXT = {"name", "label", "anchor", "row", "col"}
@@ -43,7 +46,8 @@ class TenantOverride(BaseModel):
     vendor: str
     text: dict[str, str] = {}
     signals: dict[str, str] = {}  # AppSignals fields: login_button, error_heading, error_text
-    fingerprint: str | None = None
+    # Start path (relative to the app root) -> nav_fingerprint of that page on this tenant.
+    fingerprints: dict[str, str] = {}
     note: str = ""
 
     @classmethod
@@ -84,10 +88,25 @@ def apply(cap: Capability, ov: TenantOverride) -> tuple[Capability, list[str]]:
     for part in ("steps", "success", "outcomes"):
         body[part] = walk(body[part])
     body["id"] = f"{cap.name}@{cap.version}+{ov.tenant}"
-    body["app"]["app_version_fingerprint"] = ov.fingerprint
+    # The fingerprint of the page this artifact opens on, as this tenant shows it. None when the
+    # override does not know that page: no check beats a check against another page.
+    start = start_path(cap)
+    body["app"]["app_version_fingerprint"] = ov.fingerprints.get(start) if start else None
     body["overrides"] = {"tenant": ov.tenant, "base": cap.id, "base_hash": cap.content_hash}
     effective = Capability.model_validate(body).sealed()
     return effective, [f"{k} -> {ov.text[k]}" for k in sorted(used)]
+
+
+def start_path(cap: Capability) -> str | None:
+    """The page step s1 opens, relative to the app root ("/overview.htm"), or None when s1 is
+    not a navigate."""
+    first = cap.steps[0]
+    if first.action != "navigate":
+        return None
+    try:
+        return canonical_path(render(str(first.value), {cap.app.base_url_param: ""}))
+    except KeyError:  # a start page that depends on an input has no single fingerprint
+        return None
 
 
 # ---- making the base app look like a tenant (demos and tests) -----------------------------------

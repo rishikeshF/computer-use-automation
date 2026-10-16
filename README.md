@@ -111,8 +111,8 @@ Discovery can ask for its approvals the same way: add `--handoff` to `cua discov
 
 Many institutions run the same vendor product with their own words on it. An artifact is
 recorded once; each tenant gets one override for the whole app (`tenants/<tenant>.yaml`): base
-UI text mapped to the tenant's text, how the tenant shows a login form, and its navigation
-fingerprint. Replay derives `<name>@<version>+<tenant>` with its own hash and logs the base hash
+UI text mapped to the tenant's text, how the tenant shows a login form, and the navigation
+fingerprint of each page an artifact starts on. Replay derives `<name>@<version>+<tenant>` with its own hash and logs the base hash
 it came from. The base artifact is never edited, and the policy follows the renames ("Sign In"
 keeps the rule "Log In" had).
 

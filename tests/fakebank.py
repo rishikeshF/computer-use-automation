@@ -494,7 +494,7 @@ async def replay_in(
     creds: dict[str, str] = CREDS,
 ) -> RunResult:
     async def sign_in() -> RunResult:
-        opts = ReplayOptions(base_url=BASE, handoff=handoff)
+        opts = ReplayOptions(base_url=BASE, handoff=handoff, check_fingerprint=False)
         return await replay(SESSION, creds, s.surface, s.log, opts)
 
     opts = ReplayOptions(

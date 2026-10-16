@@ -496,7 +496,12 @@ async def _replay(
             pre_cap, pre_inputs = pre[name]
 
             async def establish() -> RunResult:
-                opts = ReplayOptions(base_url=base_url, handoff=desk, signals=look.signals())
+                opts = ReplayOptions(
+                    base_url=base_url,
+                    handoff=desk,
+                    signals=look.signals(),
+                    check_fingerprint=False,
+                )
                 return await replay(pre_cap, pre_inputs, surface, log, opts)
 
             return establish
