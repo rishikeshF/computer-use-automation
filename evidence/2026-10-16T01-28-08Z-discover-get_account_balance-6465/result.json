@@ -1,0 +1,12 @@
+{
+  "status": "success",
+  "outputs": {
+    "balance": "$515.50",
+    "available": "$515.50"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T01-28-08Z-discover-get_account_balance-6465",
+    "dir": "evidence\\2026-10-16T01-28-08Z-discover-get_account_balance-6465",
+    "recoveries": []
+  }
+}

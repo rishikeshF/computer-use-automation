@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "id": "get_account_balance@0.1.0",
+  "name": "get_account_balance",
+  "version": "0.1.0",
+  "content_hash": "sha256:48f44616ba3c27959fa9e9dd7b0b1bd062d4500a8d0377231a974a710c9e9f89",
+  "status": "draft",
+  "description": "Find the balance and the available amount of the given account",
+  "app": {
+    "vendor": "parasoft/parabank",
+    "app_version_fingerprint": null,
+    "base_url_param": "base_url"
+  },
+  "inputs": [
+    {
+      "name": "account_id",
+      "type": "string",
+      "required": true,
+      "sensitive": true,
+      "pattern": null,
+      "description": ""
+    }
+  ],
+  "outputs": [
+    {
+      "name": "balance",
+      "type": "string",
+      "source_step": "s1"
+    },
+    {
+      "name": "available",
+      "type": "string",
+      "source_step": "s2"
+    }
+  ],
+  "preconditions": [
+    "ensure_session"
+  ],
+  "steps": [
+    {
+      "id": "s1",
+      "intent": "Read balance for the account",
+      "action": "extract",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "table_cell",
+            "role": "cell",
+            "row": "{{account_id}}",
+            "col": "Balance*"
+          }
+        ]
+      },
+      "value": "balance",
+      "pre": null,
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s2",
+      "intent": "Read available amount",
+      "action": "extract",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "table_cell",
+            "role": "cell",
+            "row": "{{account_id}}",
+            "col": "Available Amount"
+          }
+        ]
+      },
+      "value": "available",
+      "pre": null,
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    }
+  ],
+  "success": {
+    "url_pattern": "/parabank/overview.htm",
+    "landmark_text": "Accounts Overview",
+    "element_present": null
+  },
+  "outcomes": [],
+  "recovery": [],
+  "risk": "read_only",
+  "provenance": {
+    "discovered_at": "2026-10-16T01:28:22+00:00",
+    "model": "claude-sonnet-5-5",
+    "run_id": "2026-10-16T01-28-08Z-discover-get_account_balance-6465",
+    "goal": "Find the balance and the available amount of the given account",
+    "reviewed_by": null
+  },
+  "overrides": {}
+}

@@ -1,9 +1,9 @@
 """Surface-independent locator matching over snapshot Nodes.
 
 Any surface that can produce Nodes (web today, desktop UI Automation later) gets the robust
-strategies for free: RoleName, LabelText and TextAnchor are matched here, in plain Python, against
-the same nodes the model saw during discovery. That keeps perception and resolution consistent:
-a control is found on replay by exactly the description that was recorded.
+strategies for free: RoleName, LabelText, TableCell and TextAnchor are matched here, in plain
+Python, against the same nodes the model saw during discovery. That keeps perception and
+resolution consistent: a control is found on replay by exactly the description that was recorded.
 
 Css and BBox depend on the surface's own element model, so each surface handles those itself.
 """
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from cua.core.locator import LabelText, RoleName, TextAnchor
+from cua.core.locator import LabelText, RoleName, TableCell, TextAnchor
 from cua.surface.base import Node
 
 # Two candidates closer than this (in px) to the anchor count as a tie, so the match is ambiguous.
@@ -21,12 +21,23 @@ _TIE_PX = 1.0
 _EDGE_SLACK_PX = 2.0
 
 
-def match_nodes(strategy: RoleName | LabelText | TextAnchor, nodes: Sequence[Node]) -> list[Node]:
+Matchable = RoleName | LabelText | TableCell | TextAnchor
+
+
+def match_nodes(strategy: Matchable, nodes: Sequence[Node]) -> list[Node]:
     """Return every node the strategy matches. The caller wants exactly one."""
     if isinstance(strategy, RoleName):
         return [n for n in nodes if n.role == strategy.role and n.name == strategy.name]
     if isinstance(strategy, LabelText):
         return [n for n in nodes if n.role == strategy.role and n.label == strategy.label]
+    if isinstance(strategy, TableCell):
+        return [
+            n
+            for n in nodes
+            if n.role == strategy.role
+            and n.table is not None
+            and (n.table.row, n.table.col) == (strategy.row, strategy.col)
+        ]
     return _match_anchor(strategy, nodes)
 
 

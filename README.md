@@ -20,7 +20,12 @@ Create `.env` in the repo root (never committed):
 ```
 PARABANK_USERNAME=<your ParaBank test user>
 PARABANK_PASSWORD=<its password>
+ANTHROPIC_API_KEY=<key, only needed for discovery>
+ANTHROPIC_WORKSPACE_ID=<only if the key is not scoped to one workspace>
 ```
+
+The public ParaBank database resets from time to time. If login fails, register the test user
+again on the site (fake data only) and update `.env`. Account ids change after a reset.
 
 ## Milestone checks
 
@@ -29,3 +34,14 @@ uv run python scripts/m1_check.py          # M1: snapshot of login page + accoun
 uv run pytest tests/core/test_policy.py    # M2: admin.htm and unapproved irreversible clicks blocked
 uv run pytest                              # offline unit tests
 ```
+
+M3, discovery on the live site (one model run, writes a draft artifact and its evidence):
+
+```
+uv run cua discover --name get_account_balance --login     --goal "Find the balance and the available amount of the given account"     --input account_id=<an account id of the test user>     --output balance --output available     --runs-dir evidence
+```
+
+The model never sees sensitive values: `account_id` shows on screen as `[REDACTED:account_id]`
+and the model types inputs as `{{account_id}}`. The draft lands in
+`artifacts/get_account_balance@0.1.0.json`, the redacted log and screenshots in `evidence/<run>/`.
+Irreversible clicks (Transfer, Open New Account, ...) stop and ask on the terminal first.

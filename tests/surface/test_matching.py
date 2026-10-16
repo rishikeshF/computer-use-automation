@@ -1,7 +1,7 @@
 """Pure locator matching over Nodes. No browser needed: any surface that yields Nodes gets this."""
 
-from cua.core.locator import LabelText, RoleName, TextAnchor
-from cua.surface.base import Node
+from cua.core.locator import LabelText, RoleName, TableCell, TextAnchor
+from cua.surface.base import Node, TableContext
 from cua.surface.matching import anchor_note, match_nodes
 
 
@@ -58,3 +58,24 @@ def test_text_anchor_refuses_ambiguous_anchor() -> None:
     s = TextAnchor(role="textbox", anchor="Amount", direction="right_of")
     assert match_nodes(s, nodes) == []
     assert anchor_note(s, nodes) == "anchor text 'Amount' appears 2 times"
+
+
+def test_table_cell_matches_row_and_column() -> None:
+    cells = [
+        Node(
+            ref="a",
+            role="cell",
+            name="$515.50",
+            table=TableContext(row="Balance:"),
+            bbox=(0, 0, 1, 1),
+        ),
+        Node(
+            ref="b",
+            role="cell",
+            name="$515.50",
+            table=TableContext(row="Available:"),
+            bbox=(0, 0, 1, 1),
+        ),
+    ]
+    assert [n.ref for n in match_nodes(TableCell(role="cell", row="Balance:"), cells)] == ["a"]
+    assert match_nodes(TableCell(role="cell", row="Balance:", col="Amount"), cells) == []

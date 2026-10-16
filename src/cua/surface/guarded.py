@@ -27,6 +27,7 @@ class GuardedSurface:
         self._surface = surface
         self.policy = policy
         self._sensitive = dict(sensitive or {})
+        self.sensitive_names = frozenset(self._sensitive)  # names only; values stay private
         # The run's redactor: knows this run's secret values by name. All logging goes through it.
         self.redact = Redactor(self._sensitive)
         self._seen: dict[str, Node] = {}  # what each ref looked like when last perceived

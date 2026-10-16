@@ -9,16 +9,24 @@ Strategies, most robust first:
   1. RoleName      role + accessible name ("button 'Log In'")
   2. LabelText     role + the visible text that labels it when the markup does not
                    ("textbox labelled 'Username'"; legacy forms rarely use <label>)
-  3. TextAnchor    role + direction from a unique piece of text ("combobox right of 'Type'")
-  4. Css           last resort, flagged as fragile in review
-  5. BBox          screen position; only meaningful for surfaces with no element tree
+  3. TableCell     role + the row and column it sits in ("cell in row 'Balance:'"); how a
+                   value is read without recording the value itself
+  4. TextAnchor    role + direction from a unique piece of text ("combobox right of 'Type'")
+  5. Css           last resort, flagged as fragile in review
+  6. BBox          screen position; only meaningful for surfaces with no element tree
+
+Text fields may contain `{{param}}` placeholders ("link named {{account_id}}"). bind() fills them
+in at replay time, so the chain on disk never holds a caller's value.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from cua.core.template import render
 
 # Path from the top-level frame to the frame holding the control. Each hop is the frame's name,
 # or "#<index>" among its parent's child frames when it has no name. () is the top-level frame.
@@ -44,6 +52,16 @@ class LabelText(_Strategy):
     kind: Literal["label_text"] = "label_text"
     role: str
     label: str
+
+
+class TableCell(_Strategy):
+    """A node by its table position: the first cell of its row and the header of its column.
+    Either may be None (a two-column "Label: value" table has rows but no header)."""
+
+    kind: Literal["table_cell"] = "table_cell"
+    role: str
+    row: str | None = None
+    col: str | None = None
 
 
 class TextAnchor(_Strategy):
@@ -75,7 +93,7 @@ class BBox(_Strategy):
 
 
 LocatorStrategy = Annotated[
-    RoleName | LabelText | TextAnchor | Css | BBox, Field(discriminator="kind")
+    RoleName | LabelText | TableCell | TextAnchor | Css | BBox, Field(discriminator="kind")
 ]
 
 
@@ -86,3 +104,13 @@ class LocatorChain(BaseModel):
 
     frame: FramePath = ()
     strategies: tuple[LocatorStrategy, ...] = Field(min_length=1)
+
+    def bind(self, params: Mapping[str, str]) -> LocatorChain:
+        """A copy with every `{{param}}` in the strategies' text replaced by its value."""
+        bound = [
+            s.model_copy(
+                update={k: render(v, params) for k, v in s if isinstance(v, str) and k != "kind"}
+            )
+            for s in self.strategies
+        ]
+        return self.model_copy(update={"strategies": tuple(bound)})

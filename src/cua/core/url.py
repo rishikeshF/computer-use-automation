@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import posixpath
 import re
-from urllib.parse import unquote, urlsplit
+from collections.abc import Mapping
+from urllib.parse import parse_qsl, unquote, urlsplit
+
+from cua.core.template import render
 
 SESSION_IN_PATH = re.compile(r";jsessionid=[^?#/]*", re.IGNORECASE)
 
@@ -40,3 +43,34 @@ def canonical_path(url: str) -> str:
         path = decoded
     path = posixpath.normpath(strip_session(path).replace("\\", "/"))
     return "/" if path in (".", "") else path.lower()
+
+
+def url_pattern(url: str, params: Mapping[str, str]) -> str:
+    """A checkpoint pattern for a page: canonical path plus sorted query, where a query value equal
+    to a param becomes its placeholder and any other value becomes `*`.
+
+        https://x/parabank/activity.htm;jsessionid=AB?id=13344
+        -> /parabank/activity.htm?id={{account_id}}
+
+    Values that are not params are wildcarded because they are run data (a new account id, a
+    timestamp) and would make the checkpoint fail on every other run."""
+    by_value = {v: k for k, v in params.items() if v}
+    query = sorted(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+    parts = [f"{k}={'{{' + by_value[v] + '}}' if v in by_value else '*'}" for k, v in query]
+    path = canonical_path(url)
+    return f"{path}?{'&'.join(parts)}" if parts else path
+
+
+def url_matches(url: str, pattern: str, params: Mapping[str, str]) -> bool:
+    """Does a live URL satisfy a recorded pattern, with params bound?"""
+    want_path, _, want_query = pattern.partition("?")
+    if canonical_path(url) != want_path:
+        return False
+    have = dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+    for item in filter(None, want_query.split("&")):
+        key, _, want = item.partition("=")
+        if key not in have:
+            return False
+        if want != "*" and have[key] != render(want, params):
+            return False
+    return True

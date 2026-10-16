@@ -2,6 +2,7 @@
 
 1. Replay never reaches the LLM, not even transitively. Production replay must run with no model.
 2. Only cua.surface touches Playwright. Everything else works against the Surface protocol.
+3. Only discovery (and the CLI that wires it) talks to the model.
 """
 
 import ast
@@ -70,3 +71,15 @@ def test_core_depends_on_nothing_else_in_cua() -> None:
         if mod.startswith("cua.core")
     }
     assert not any(leaks.values()), f"core imports other layers: {leaks}"
+
+
+def test_only_discovery_talks_to_the_model() -> None:
+    """The model is a discovery-time tool. Core, surface and (later) replay and handoff never
+    reach it; the CLI wires it into discovery and nothing else."""
+    allowed = ("cua.llm", "cua.discover", "cua.cli")
+    offenders = sorted(
+        mod
+        for mod, imps in GRAPH.items()
+        if not mod.startswith(allowed) and any(i.startswith(("cua.llm", "anthropic")) for i in imps)
+    )
+    assert not offenders, f"model reached from outside discovery: {offenders}"
