@@ -30,9 +30,11 @@ from cua.core.artifact import (
     OutputSpec,
     ParamValue,
     Provenance,
+    Retry,
     Step,
     StepValue,
     max_risk,
+    nav_fingerprint,
 )
 from cua.core.locator import (
     LabelText,
@@ -53,6 +55,9 @@ from cua.surface.matching import Matchable, match_nodes
 # Text nodes that can anchor a control ("Amount:" left of an input).
 _ANCHOR_ROLES = {"text", "cell", "columnheader", "heading"}
 _MAX_ANCHORS = 6  # nearest candidates tried; more only adds slower, worse anchors
+# Loading a page is safe to repeat; a 500 or a dropped connection on the way in is often
+# transient. Clicks and typing are never retried blindly: they may already have taken effect.
+_NAV_RETRY = Retry(max=2, backoff_ms=1000)
 
 
 class TraceStep(BaseModel):
@@ -109,6 +114,7 @@ def record(
                 action="navigate",
                 value=_url_value(trace[0].url_before, base_url, params),
                 post=start,
+                retry=_NAV_RETRY,
             )
         )
 
@@ -149,6 +155,7 @@ def record(
                 pre=_page_checkpoint(t, params) if t.target is not None else None,
                 post=post,
                 risk=t.risk,
+                retry=_NAV_RETRY if t.tool == "navigate" else Retry(),
                 review_notes=notes,
             )
         )
@@ -163,7 +170,7 @@ def record(
         name=name,
         version=version,
         description=description,
-        app=AppInfo(vendor=vendor),
+        app=AppInfo(vendor=vendor, app_version_fingerprint=_fingerprint(trace)),
         inputs=tuple(InputSpec(name=k, sensitive=k in sensitive, required=True) for k in inputs),
         outputs=tuple(outputs),
         preconditions=tuple(preconditions),
@@ -179,6 +186,18 @@ def record(
         raise RecorderError("; ".join(problems))
     _assert_no_secrets(cap, {k: v for k, v in params.items() if k in sensitive})
     return cap
+
+
+def _fingerprint(trace: Sequence[TraceStep]) -> str | None:
+    """nav_fingerprint of the page step s1 opens: the start page when the recorder adds the
+    opening navigate, else the page the model's own first navigate led to."""
+    if trace[0].tool != "navigate":
+        page = trace[0].page
+    elif len(trace) > 1:
+        page = trace[1].page
+    else:
+        return None
+    return nav_fingerprint(n.name for n in page if n.role == "link")
 
 
 def _page_checkpoint(t: TraceStep, params: Mapping[str, str]) -> Checkpoint:
@@ -224,7 +243,8 @@ def _not_found_detectors(
         if notes or not any(_uses(st, param) for st in absent.strategies):
             continue
         guards = _column_guards([identity, t.target], t.page)
-        if not guards:
+        loaded = _data_guard(t.target, t.page)
+        if not guards or loaded is None:
             continue
         noun = re.sub(r"_(id|number|no|num)$", "", param)
         where = first.pre.landmark_text or "the page"
@@ -233,10 +253,11 @@ def _not_found_detectors(
                 code=f"{noun}_not_found",
                 message=f"No {noun.replace('_', ' ')} with the given {param} on {where}.",
                 check_before=tuple(uses),
-                when=Condition(page=first.pre, present=tuple(guards), absent=(absent,)),
+                when=Condition(page=first.pre, present=(*guards, loaded), absent=(absent,)),
                 rationale=(
                     f"{param} was shown as a {identity.role} named by its value on {where}. "
-                    "With the table loaded, its absence means the input does not exist."
+                    "Once the headers and at least one data row are on screen, its absence "
+                    "means the input does not exist."
                 ),
             )
         )
@@ -255,6 +276,17 @@ def _column_guards(nodes: Sequence[Node | None], page: Sequence[Node]) -> list[L
         if chain not in guards and len(match_nodes(header, page)) == 1:
             guards.append(chain)
     return guards
+
+
+def _data_guard(target: Node | None, page: Sequence[Node]) -> LocatorChain | None:
+    """ "Some data cell in the target's column": proves the rows loaded, not just the headers.
+
+    Legacy pages often draw the table frame first and fill rows from a later request. Checking
+    for a missing row before the rows exist would report a real account as not found."""
+    if target is None or target.table is None or not target.table.col:
+        return None
+    cell = TableCell(role=target.role, row="*", col=target.table.col)
+    return LocatorChain(strategies=(cell,)) if match_nodes(cell, page) else None
 
 
 def _uses(s: LocatorStrategy, param: str) -> bool:

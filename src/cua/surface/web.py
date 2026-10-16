@@ -13,8 +13,16 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
+from playwright.async_api import (
+    Dialog,
+    Frame,
+    Locator,
+    Page,
+    Response,
+    Route,
+    async_playwright,
+)
 from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import Frame, Locator, Page, Route, async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from cua.core.action import Action, Click, Fill, Navigate, Select
@@ -62,6 +70,12 @@ class WebSurface:
         self._next_ref = 1  # refs are unique for the life of this surface, across navigations
         self._ref_frames: dict[str, Frame] = {}
         self.blocked_navigations: list[str] = []  # evidence: loads the network guard stopped
+        self._status: int | None = None
+        self._dialogs: list[str] = []
+        page.on("response", self._on_response)
+        # A dialog blocks the page until handled. Dismiss it (the safe answer to a confirm())
+        # and report it in the next observation, so callers see it happened.
+        page.on("dialog", self._on_dialog)
 
     @classmethod
     @asynccontextmanager
@@ -91,6 +105,20 @@ class WebSurface:
     @property
     def url(self) -> str:
         return self._page.url
+
+    @property
+    def page(self) -> Page:
+        """The Playwright page. For cua.surface modules only (fault injection); nothing outside
+        this package may touch Playwright, and tests/test_boundaries.py enforces it."""
+        return self._page
+
+    def _on_response(self, response: Response) -> None:
+        if response.request.resource_type == "document" and response.frame == self._page.main_frame:
+            self._status = response.status
+
+    async def _on_dialog(self, dialog: Dialog) -> None:
+        self._dialogs.append(dialog.message)
+        await dialog.dismiss()
 
     async def guard_navigation(self, allowed: Callable[[str], bool]) -> None:
         """Abort any page or frame load the policy forbids, before the request leaves the browser.
@@ -127,11 +155,14 @@ class WebSurface:
                 # Frame detached or navigating mid-scan. Report it rather than fail the observation.
                 skipped.append("/".join(path) or "(top)")
         shot = await self._screenshot(mask_values) if screenshot else None
+        dialogs, self._dialogs = tuple(self._dialogs), []
         return Observation(
             url=self._page.url,
             title=await self._page.title(),
             nodes=tuple(nodes),
             skipped_frames=tuple(skipped),
+            http_status=self._status,
+            dialogs=dialogs,
             screenshot=shot,
         )
 

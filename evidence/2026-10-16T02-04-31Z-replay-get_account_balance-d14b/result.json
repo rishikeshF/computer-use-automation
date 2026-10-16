@@ -1,0 +1,19 @@
+{
+  "status": "success",
+  "outputs": {
+    "balance": "515.50",
+    "available": "515.50"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T02-04-31Z-replay-get_account_balance-d14b",
+    "dir": "evidence/2026-10-16T02-04-31Z-replay-get_account_balance-d14b",
+    "recoveries": [
+      "s1: session expired; signed in again, resumed at s1"
+    ],
+    "raw_outputs": {
+      "balance": "$515.50",
+      "available": "$515.50"
+    },
+    "warnings": []
+  }
+}

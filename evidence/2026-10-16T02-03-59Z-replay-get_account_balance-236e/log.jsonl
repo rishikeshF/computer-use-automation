@@ -1,0 +1,13 @@
+{"t": "2026-10-16T02:03:59+00:00", "event": "replay_start", "capability": "get_account_balance@0.2.0", "content_hash": "sha256:b2d493ef68ed8c659e99d43a15e14605e1549d98889b3a0ac75dc782a5495e76", "inputs": ["account_id"]}
+{"t": "2026-10-16T02:03:59+00:00", "event": "precondition", "name": "ensure_session", "why": "precondition"}
+{"t": "2026-10-16T02:03:59+00:00", "event": "replay_start", "capability": "ensure_session@0.1.0", "content_hash": "sha256:f3e075964c7d0a263c8e26a9d27592a59ca4444295ff9709756fbcc28233daae", "inputs": ["password", "username"]}
+{"t": "2026-10-16T02:04:01+00:00", "event": "step", "step": "s1", "action": "navigate", "intent": "Open the bank login page", "screenshot": "001-s1.png"}
+{"t": "2026-10-16T02:04:01+00:00", "event": "resolved", "step": "s2", "strategy": 0, "attempts": [{"index": 0, "kind": "label_text", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:04:01+00:00", "event": "step", "step": "s2", "action": "fill", "intent": "Enter username", "screenshot": "002-s2.png"}
+{"t": "2026-10-16T02:04:01+00:00", "event": "resolved", "step": "s3", "strategy": 0, "attempts": [{"index": 0, "kind": "label_text", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:04:02+00:00", "event": "step", "step": "s3", "action": "fill", "intent": "Enter password", "screenshot": "003-s3.png"}
+{"t": "2026-10-16T02:04:02+00:00", "event": "resolved", "step": "s4", "strategy": 0, "attempts": [{"index": 0, "kind": "role_name", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:04:03+00:00", "event": "step", "step": "s4", "action": "click", "intent": "Click Log In", "screenshot": "004-s4.png"}
+{"t": "2026-10-16T02:04:05+00:00", "event": "step", "step": "s1", "action": "navigate", "intent": "Open the Accounts Overview page", "screenshot": "005-s1.png"}
+{"t": "2026-10-16T02:04:05+00:00", "event": "business_outcome", "step": "s2", "code": "account_not_found"}
+{"t": "2026-10-16T02:04:06+00:00", "event": "result", "result": {"status": "business_outcome", "code": "account_not_found", "message": "No account with the given account_id on Accounts Overview.", "step_id": "s2", "evidence": {"run_id": "2026-10-16T02-03-59Z-replay-get_account_balance-236e", "dir": "evidence/2026-10-16T02-03-59Z-replay-get_account_balance-236e", "recoveries": [], "raw_outputs": {}, "warnings": []}}}

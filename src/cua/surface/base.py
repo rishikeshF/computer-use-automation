@@ -53,6 +53,8 @@ class Observation(BaseModel):
     nodes: tuple[Node, ...]
     # Frames we could not read (detached mid-scan, navigating). Reported, not hidden.
     skipped_frames: tuple[str, ...] = ()
+    http_status: int | None = None  # status of the last top-level page load, when known
+    dialogs: tuple[str, ...] = ()  # alert/confirm messages since the last observe (dismissed)
     # PNG bytes with secret fields masked. Kept out of serialized logs; saved as a file instead.
     screenshot: bytes | None = Field(default=None, repr=False, exclude=True)
 

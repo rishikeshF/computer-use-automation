@@ -1,0 +1,11 @@
+{
+  "status": "success",
+  "outputs": {},
+  "evidence": {
+    "run_id": "2026-10-16T02-02-16Z-discover-ensure_session-3425",
+    "dir": "evidence/2026-10-16T02-02-16Z-discover-ensure_session-3425",
+    "recoveries": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

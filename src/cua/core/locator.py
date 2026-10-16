@@ -56,7 +56,11 @@ class LabelText(_Strategy):
 
 class TableCell(_Strategy):
     """A node by its table position: the first cell of its row and the header of its column.
-    Either may be None (a two-column "Label: value" table has rows but no header)."""
+    Either may be None (a two-column "Label: value" table has rows but no header).
+
+    row "*" means any row. Header cells have their own role (columnheader), so a "cell" or
+    "link" with row "*" is data. Used to ask "has this column any data yet?", for example to
+    prove a table finished loading before concluding that a row is missing."""
 
     kind: Literal["table_cell"] = "table_cell"
     role: str

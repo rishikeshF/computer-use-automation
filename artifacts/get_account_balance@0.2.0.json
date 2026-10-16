@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "id": "get_account_balance@0.2.0",
+  "name": "get_account_balance",
+  "version": "0.2.0",
+  "content_hash": "sha256:b2d493ef68ed8c659e99d43a15e14605e1549d98889b3a0ac75dc782a5495e76",
+  "status": "draft",
+  "description": "Find the balance and the available amount of the given account",
+  "app": {
+    "vendor": "parasoft/parabank",
+    "app_version_fingerprint": "nav:8011e223e21ddba4",
+    "base_url_param": "base_url"
+  },
+  "inputs": [
+    {
+      "name": "account_id",
+      "type": "string",
+      "required": true,
+      "sensitive": true,
+      "pattern": null,
+      "description": ""
+    }
+  ],
+  "outputs": [
+    {
+      "name": "balance",
+      "type": "decimal",
+      "unit": "USD",
+      "source_step": "s2"
+    },
+    {
+      "name": "available",
+      "type": "decimal",
+      "unit": "USD",
+      "source_step": "s3"
+    }
+  ],
+  "preconditions": [
+    "ensure_session"
+  ],
+  "steps": [
+    {
+      "id": "s1",
+      "intent": "Open the Accounts Overview page",
+      "action": "navigate",
+      "target": null,
+      "value": "{{base_url}}/overview.htm",
+      "pre": null,
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Accounts Overview",
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 2,
+        "backoff_ms": 1000,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s2",
+      "intent": "Read balance of the account",
+      "action": "extract",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "table_cell",
+            "role": "cell",
+            "row": "{{account_id}}",
+            "col": "Balance*"
+          }
+        ]
+      },
+      "value": "balance",
+      "pre": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Accounts Overview",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s3",
+      "intent": "Read available amount",
+      "action": "extract",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "table_cell",
+            "role": "cell",
+            "row": "{{account_id}}",
+            "col": "Available Amount"
+          }
+        ]
+      },
+      "value": "available",
+      "pre": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Accounts Overview",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    }
+  ],
+  "success": {
+    "url_pattern": "/parabank/overview.htm",
+    "landmark_text": "Accounts Overview",
+    "element_present": null
+  },
+  "outcomes": [
+    {
+      "code": "account_not_found",
+      "message": "No account with the given account_id on Accounts Overview.",
+      "check_before": [
+        "s2",
+        "s3"
+      ],
+      "when": {
+        "page": {
+          "url_pattern": "/parabank/overview.htm",
+          "landmark_text": "Accounts Overview",
+          "element_present": null
+        },
+        "present": [
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "role_name",
+                "role": "columnheader",
+                "name": "Account"
+              }
+            ]
+          },
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "role_name",
+                "role": "columnheader",
+                "name": "Balance*"
+              }
+            ]
+          },
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "table_cell",
+                "role": "cell",
+                "row": "*",
+                "col": "Balance*"
+              }
+            ]
+          }
+        ],
+        "absent": [
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "role_name",
+                "role": "link",
+                "name": "{{account_id}}"
+              }
+            ]
+          }
+        ]
+      },
+      "rationale": "account_id was shown as a link named by its value on Accounts Overview. Once the headers and at least one data row are on screen, its absence means the input does not exist."
+    }
+  ],
+  "recovery": [],
+  "risk": "read_only",
+  "provenance": {
+    "discovered_at": "2026-10-16T02:03:28+00:00",
+    "model": "claude-sonnet-5-5",
+    "run_id": "2026-10-16T02-03-16Z-discover-get_account_balance-b970",
+    "goal": "Find the balance and the available amount of the given account",
+    "reviewed_by": null
+  },
+  "overrides": {}
+}

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -118,8 +119,20 @@ class Step(_Model):
 
 class AppInfo(_Model):
     vendor: str
-    app_version_fingerprint: str | None = None  # filled in once replay can fingerprint the app
+    # nav_fingerprint() of the page step s1 opens. Replay recomputes it there; a different value
+    # means the app's navigation changed since discovery (a new release, another tenant), which
+    # is worth a warning even when every step still resolves.
+    app_version_fingerprint: str | None = None
     base_url_param: str = "base_url"
+
+
+def nav_fingerprint(link_names: Iterable[str]) -> str:
+    """A short hash of a page's navigation: its link texts, minus anything holding data.
+
+    Links with digits are account numbers and dates, which differ per user and per day; the
+    rest ("Transfer Funds", "Log Out", ...) is the app's own structure."""
+    names = sorted({n.strip() for n in link_names if n.strip() and not any(c.isdigit() for c in n)})
+    return "nav:" + hashlib.sha256("\n".join(names).encode()).hexdigest()[:16]
 
 
 class Provenance(_Model):

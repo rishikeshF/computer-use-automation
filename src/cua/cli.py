@@ -1,8 +1,11 @@
-"""Command line: `cua discover` now; replay, operator and catalog arrive with their milestones.
+"""Command line. Operator and catalog arrive with their milestones.
 
     uv run cua discover --name get_account_balance \\
         --goal "Find the balance and available amount of an account" \\
         --input account_id=13344 --output balance --output available --login
+
+    uv run cua replay artifacts/get_account_balance@0.2.0.json \\
+        --input account_id=13344 [--inject http500] [--inject session_expire]
 """
 
 from __future__ import annotations
@@ -18,13 +21,19 @@ from typing import Annotated
 import typer
 from dotenv import dotenv_values
 
+from cua.core.artifact import Capability
+from cua.core.faults import FaultPlan, parse_faults
 from cua.core.policy import Policy
-from cua.core.result import Success
+from cua.core.result import BusinessOutcome, NeedsHuman, RunResult, Success
 from cua.core.runlog import RunLog, new_run_id, portable
+from cua.core.template import render
+from cua.core.url import canonical_path
 from cua.discover.agent import DiscoveryTask, discover
 from cua.discover.recorder import RecorderError, record
 from cua.discover.session import login, logout
 from cua.llm.claude import DEFAULT_MODEL, AnthropicClient
+from cua.replay.engine import ReplayOptions, replay
+from cua.surface.faults import WebFaults
 from cua.surface.guarded import GuardedSurface
 from cua.surface.web import WebSurface
 
@@ -62,17 +71,35 @@ def parse_inputs(pairs: list[str]) -> dict[str, str]:
     return out
 
 
+def versions(artifacts: Path, name: str) -> dict[tuple[int, int, int], Path]:
+    """Every artifact file of a capability on disk, by semantic version."""
+    found: dict[tuple[int, int, int], Path] = {}
+    for p in artifacts.glob(f"{name}@*.json"):
+        m = re.fullmatch(rf"{re.escape(name)}@(\d+)\.(\d+)\.(\d+)\.json", p.name)
+        if m:
+            found[(int(m[1]), int(m[2]), int(m[3]))] = p
+    return found
+
+
 def next_version(artifacts: Path, name: str) -> str:
     """0.1.0 for a new capability; otherwise the next minor after the highest on disk."""
-    found = [
-        tuple(int(x) for x in m.groups())
-        for p in artifacts.glob(f"{name}@*.json")
-        if (m := re.fullmatch(rf"{re.escape(name)}@(\d+)\.(\d+)\.(\d+)\.json", p.name))
-    ]
+    found = versions(artifacts, name)
     if not found:
         return "0.1.0"
     major, minor, _ = max(found)
     return f"{major}.{minor + 1}.0"
+
+
+def load_artifact(path: Path) -> Capability:
+    """Read an artifact and refuse it if its content no longer matches its hash: someone
+    edited the steps by hand after review, and what runs must be what was reviewed."""
+    cap = Capability.model_validate_json(path.read_text(encoding="utf-8"))
+    if cap.content_hash != cap.behavior_hash():
+        raise typer.BadParameter(f"{path.name}: content_hash does not match its content")
+    problems = cap.problems()
+    if problems:
+        raise typer.BadParameter(f"{path.name}: " + "; ".join(problems))
+    return cap
 
 
 async def ask_human(what: str) -> bool:
@@ -193,6 +220,121 @@ async def _discover(
     )
     typer.echo(f"\nDraft artifact: {portable(path, ROOT)}\nEvidence: {log.ref}")
     return 0
+
+
+@app.command("replay")
+def replay_cmd(
+    artifact: Annotated[Path, typer.Argument(help="Artifact JSON file.")],
+    input: Annotated[list[str], typer.Option("--input", help="name=value or name=env:VAR")] = [],  # noqa: B006
+    inject: Annotated[
+        list[str], typer.Option("--inject", help="slow[:ms] http500[:n] session_expire dialog")
+    ] = [],  # noqa: B006
+    confirm: Annotated[
+        bool, typer.Option(help="Allow an approved irreversible capability.")
+    ] = False,
+    headed: Annotated[bool, typer.Option(help="Show the browser.")] = False,
+    base_url: Annotated[str, typer.Option(help="App root.")] = PARABANK,
+    policy: Annotated[Path, typer.Option(help="Policy file.")] = ROOT / "policies/parabank.yaml",
+    runs_dir: Annotated[Path, typer.Option(help="Where the run log goes.")] = ROOT / "runs",
+    artifacts_dir: Annotated[Path, typer.Option(help="Where preconditions are found.")] = ROOT
+    / "artifacts",
+) -> None:
+    """Run an artifact with no model. Exit code: 0 success, 3 business outcome, 4 needs a human,
+    1 failure."""
+    cap = load_artifact(artifact)
+    try:
+        faults = parse_faults(inject)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    result = asyncio.run(
+        _replay(
+            cap,
+            parse_inputs(input),
+            faults,
+            confirm,
+            headed,
+            base_url,
+            policy,
+            runs_dir,
+            artifacts_dir,
+        )
+    )
+    typer.echo(json.dumps(json.loads(result.model_dump_json()), indent=2))
+    codes = {Success: 0, BusinessOutcome: 3, NeedsHuman: 4}
+    raise typer.Exit(codes.get(type(result), 1))
+
+
+async def _replay(
+    cap: Capability,
+    inputs: dict[str, str],
+    faults_plan: FaultPlan,
+    confirm: bool,
+    headed: bool,
+    base_url: str,
+    policy_file: Path,
+    runs_dir: Path,
+    artifacts_dir: Path,
+) -> RunResult:
+    pol = Policy.load(policy_file)
+    # Preconditions are the newest artifact of that name. Their inputs come from the environment
+    # as PARABANK_<INPUT>, so credentials never appear on a command line or in shell history.
+    pre: dict[str, tuple[Capability, dict[str, str]]] = {}
+    for name in cap.preconditions:
+        found = versions(artifacts_dir, name)
+        if not found:
+            raise typer.BadParameter(f"precondition {name!r} has no artifact in {artifacts_dir}")
+        pre_cap = load_artifact(found[max(found)])
+        pre_inputs = {i.name: env(f"PARABANK_{i.name.upper()}") or "" for i in pre_cap.inputs}
+        pre[name] = (pre_cap, pre_inputs)
+
+    declared = [i.name for i in cap.inputs if i.sensitive]
+    sensitive = pol.sensitive_values(inputs, declared)
+    for pre_cap, pre_inputs in pre.values():
+        sensitive |= pol.sensitive_values(
+            pre_inputs, [i.name for i in pre_cap.inputs if i.sensitive]
+        )
+
+    run_id = new_run_id(f"replay-{cap.name}")
+    async with WebSurface.launch(headless=not headed, allowed_url=pol.url_allowed) as web:
+        surface = GuardedSurface(web, pol, sensitive=sensitive)
+        log = RunLog(runs_dir, run_id, surface.redact, base=ROOT)
+        injector: WebFaults | None = None
+        if faults_plan.active:
+            injector = WebFaults(web, faults_plan)
+            first = cap.steps[0]
+            start = (
+                canonical_path(render(str(first.value), {"base_url": base_url.rstrip("/")}))
+                if first.action == "navigate"
+                else None
+            )
+            await injector.install(start)
+            log.event("faults_planned", plan=faults_plan.model_dump(), start_path=start)
+
+        def handler(name: str):  # type: ignore[no-untyped-def]
+            pre_cap, pre_inputs = pre[name]
+
+            async def establish() -> RunResult:
+                return await replay(
+                    pre_cap, pre_inputs, surface, log, ReplayOptions(base_url=base_url)
+                )
+
+            return establish
+
+        options = ReplayOptions(
+            base_url=base_url,
+            confirm=confirm,
+            preconditions={name: handler(name) for name in pre},
+            hooks=injector,
+        )
+        try:
+            result = await replay(cap, inputs, surface, log, options)
+        finally:
+            if injector is not None:
+                log.event("faults_injected", injected=injector.injected)
+            await logout(surface)
+        log.event("result", result=result.model_dump(mode="json"))
+        log.result(result)
+    return result
 
 
 if __name__ == "__main__":

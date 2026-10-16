@@ -1,0 +1,13 @@
+{
+  "status": "business_outcome",
+  "code": "account_not_found",
+  "message": "No account with the given account_id on Accounts Overview.",
+  "step_id": "s2",
+  "evidence": {
+    "run_id": "2026-10-16T02-03-59Z-replay-get_account_balance-236e",
+    "dir": "evidence/2026-10-16T02-03-59Z-replay-get_account_balance-236e",
+    "recoveries": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

@@ -45,3 +45,16 @@ The model never sees sensitive values: `account_id` shows on screen as `[REDACTE
 and the model types inputs as `{{account_id}}`. The draft lands in
 `artifacts/get_account_balance@0.1.0.json`, the redacted log and screenshots in `evidence/<run>/`.
 Irreversible clicks (Transfer, Open New Account, ...) stop and ask on the terminal first.
+
+M4, replay with no model. Signs in by replaying `ensure_session` (credentials from `.env`):
+
+```
+A=artifacts/get_account_balance@0.2.0.json
+uv run cua replay $A --input account_id=<id> --runs-dir evidence                       # success
+uv run cua replay $A --input account_id=12345 --runs-dir evidence                      # account_not_found
+uv run cua replay $A --input account_id=<id> --inject http500 --runs-dir evidence      # retried
+uv run cua replay $A --input account_id=<id> --inject session_expire --runs-dir evidence  # re-login
+```
+
+Exit codes: 0 success, 3 business outcome, 4 needs a human, 1 failure. Faults run in our own
+browser only (`slow[:ms]`, `http500[:n]`, `session_expire`, `dialog`); the app sees no extra load.

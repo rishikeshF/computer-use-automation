@@ -1,0 +1,17 @@
+{
+  "status": "success",
+  "outputs": {
+    "balance": "515.50",
+    "available": "515.50"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T02-03-16Z-discover-get_account_balance-b970",
+    "dir": "evidence/2026-10-16T02-03-16Z-discover-get_account_balance-b970",
+    "recoveries": [],
+    "raw_outputs": {
+      "balance": "$515.50",
+      "available": "$515.50"
+    },
+    "warnings": []
+  }
+}

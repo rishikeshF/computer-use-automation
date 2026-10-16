@@ -268,9 +268,11 @@ def test_account_not_found_is_declared_with_a_guard() -> None:
     assert d.when.page == cap.steps[1].pre  # only meaningful on the right page
     assert d.when.absent[0].strategies == (RoleName(role="link", name="{{account_id}}"),)
     # The headers must be there, so a reshaped table is a Failure, not "account not found".
+    # Headers alone are not enough: the rows may still be loading. A Balance* data cell is.
     assert [g.strategies[0] for g in d.when.present] == [
         RoleName(role="columnheader", name="Account"),
         RoleName(role="columnheader", name="Balance*"),
+        TableCell(role="cell", row="*", col="Balance*"),
     ]
     assert "13344" not in cap.model_dump_json()
     assert cap.problems() == []

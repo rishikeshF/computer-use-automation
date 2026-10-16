@@ -36,7 +36,8 @@ def match_nodes(strategy: Matchable, nodes: Sequence[Node]) -> list[Node]:
             for n in nodes
             if n.role == strategy.role
             and n.table is not None
-            and (n.table.row, n.table.col) == (strategy.row, strategy.col)
+            and n.table.col == strategy.col
+            and strategy.row in ("*", n.table.row)
         ]
     return _match_anchor(strategy, nodes)
 

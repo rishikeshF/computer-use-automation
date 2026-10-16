@@ -1,0 +1,19 @@
+{
+  "status": "success",
+  "outputs": {
+    "balance": "515.50",
+    "available": "515.50"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T02-04-13Z-replay-get_account_balance-8821",
+    "dir": "evidence/2026-10-16T02-04-13Z-replay-get_account_balance-8821",
+    "recoveries": [
+      "s1: HTTP 500 on /parabank/overview.htm; retry 1 of 2"
+    ],
+    "raw_outputs": {
+      "balance": "$515.50",
+      "available": "$515.50"
+    },
+    "warnings": []
+  }
+}

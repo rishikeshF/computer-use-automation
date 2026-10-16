@@ -27,6 +27,7 @@ class Evidence(_Model):
     dir: str  # where the redacted log and screenshots are, relative to the repo
     recoveries: tuple[str, ...] = ()
     raw_outputs: dict[str, str] = {}  # outputs exactly as the screen showed them
+    warnings: tuple[str, ...] = ()  # did not change the result, but a person should know
 
 
 class Success(_Model):
@@ -57,6 +58,9 @@ FailureKind = Literal[
     "app_error",
     "policy_violation",
     "timeout",
+    "invalid_input",  # the caller's inputs do not fit the artifact's declared inputs
+    "precondition_failed",  # e.g. ensure_session could not sign in
+    "output_mismatch",  # a value read does not fit its declared type ("N/A" for a decimal)
     # discovery only: the model stopped or could not make progress
     "gave_up",
     "stuck",
