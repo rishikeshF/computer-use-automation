@@ -1,0 +1,21 @@
+{
+  "status": "failure",
+  "kind": "policy_violation",
+  "step_id": null,
+  "expected": "a draft or approved artifact",
+  "observed": "get_account_balance@0.1.0 is deprecated: superseded by 0.2.0: no retry on the page load and no app fingerprint",
+  "screenshot": null,
+  "evidence": {
+    "run_id": "2026-10-16T02-41-58Z-replay-get_account_balance-95c0",
+    "dir": "evidence/2026-10-16T02-41-58Z-replay-get_account_balance-95c0",
+    "artifact": {
+      "id": "get_account_balance@0.1.0",
+      "status": "deprecated",
+      "content_hash": "sha256:b7f395ac42fc605f08a91525e0a9dc250d1fc53eee2bd8768b8a42457f97715d"
+    },
+    "recoveries": [],
+    "interventions": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

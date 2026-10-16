@@ -58,8 +58,9 @@ class RunLog:
         self._redact = redactor
         self._shots = 0
 
-    def event(self, kind: str, **data: Any) -> None:
-        record = self._redact.data({"t": utc_now(), "event": kind, **data})
+    def event(self, name: str, /, **data: Any) -> None:
+        """Append one event. Positional-only name, so `data` may hold its own `kind` field."""
+        record = self._redact.data({"t": utc_now(), "event": name, **data})
         with (self.dir / "log.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 

@@ -139,9 +139,27 @@
   }
 
   // ---- emit --------------------------------------------------------------------------------
+  // The box of an element's own text, not of the element. In "<p>Your new account number:
+  // <a>13566</a></p>" the paragraph's box contains the link; the text's box sits left of it,
+  // which is what lets the text anchor the link.
+  function ownTextBox(el) {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const c of el.childNodes) {
+      if (c.nodeType !== 3 || !norm(c.textContent)) continue;
+      const range = document.createRange();
+      range.selectNodeContents(c);
+      for (const r of range.getClientRects()) {
+        if (r.width === 0 || r.height === 0) continue;
+        x1 = Math.min(x1, r.left); y1 = Math.min(y1, r.top);
+        x2 = Math.max(x2, r.right); y2 = Math.max(y2, r.bottom);
+      }
+    }
+    return x1 === Infinity ? null : { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+  }
+
   function emit(el, role, name, extra) {
     if (!el.dataset.cuaRef) el.dataset.cuaRef = "e" + next++;
-    const r = el.getBoundingClientRect();
+    const r = (role === "text" && ownTextBox(el)) || el.getBoundingClientRect();
     nodes.push({
       ref: el.dataset.cuaRef,
       role,

@@ -1,0 +1,24 @@
+{
+  "status": "failure",
+  "kind": "app_error",
+  "step_id": "s1",
+  "expected": null,
+  "observed": "HTTP 500 on /parabank/overview.htm",
+  "screenshot": "005-app-error.png",
+  "evidence": {
+    "run_id": "2026-10-16T02-40-17Z-replay-get_account_balance-9133",
+    "dir": "evidence/2026-10-16T02-40-17Z-replay-get_account_balance-9133",
+    "artifact": {
+      "id": "get_account_balance@0.2.0",
+      "status": "draft",
+      "content_hash": "sha256:b2d493ef68ed8c659e99d43a15e14605e1549d98889b3a0ac75dc782a5495e76"
+    },
+    "recoveries": [
+      "s1: HTTP 500 on /parabank/overview.htm; retry 1 of 2",
+      "s1: HTTP 500 on /parabank/overview.htm; retry 2 of 2"
+    ],
+    "interventions": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

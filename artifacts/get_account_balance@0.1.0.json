@@ -4,7 +4,8 @@
   "name": "get_account_balance",
   "version": "0.1.0",
   "content_hash": "sha256:b7f395ac42fc605f08a91525e0a9dc250d1fc53eee2bd8768b8a42457f97715d",
-  "status": "draft",
+  "status": "deprecated",
+  "status_note": "superseded by 0.2.0: no retry on the page load and no app fingerprint",
   "description": "Find the balance and the available amount of the given account",
   "app": {
     "vendor": "parasoft/parabank",

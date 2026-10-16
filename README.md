@@ -58,3 +58,46 @@ uv run cua replay $A --input account_id=<id> --inject session_expire --runs-dir 
 
 Exit codes: 0 success, 3 business outcome, 4 needs a human, 1 failure. Faults run in our own
 browser only (`slow[:ms]`, `http500[:n]`, `session_expire`, `dialog`); the app sees no extra load.
+
+More M4 evidence: `--inject http500:3` (retries used up, ends as `app_error` with a screenshot),
+`--inject dialog` and `--inject slow`. A wrong password ends as the business outcome
+`invalid_credentials` (exit 3), not as an app error:
+
+```
+uv run cua replay artifacts/ensure_session@0.2.0.json --input username=nobody --input password=x --runs-dir evidence
+```
+
+Rules after an irreversible step (money moved, an account opened): the run never signs in again,
+rewinds, retries a page load or clicks again. Anything that goes wrong after that point ends as
+`needs_human`, naming the step that committed.
+
+Review status lives in each artifact: `draft`, `approved` or `deprecated` (refused by replay,
+with a note saying why). It is not part of `content_hash`, and every result records which
+artifact ran, its status and its hash. After a reviewer edits a draft (for example, adding an
+outcome), `uv run cua seal <artifact>` recomputes the hash; approved artifacts are never re-sealed.
+
+M5, human handoff. A draft irreversible capability pauses at its irreversible step and waits for
+a person, with the browser kept open:
+
+```
+uv run cua replay artifacts/open_new_account@0.1.0.json \
+    --input account_type=SAVINGS --input funding_account_id=<id> \
+    --headed --handoff --runs-dir evidence
+```
+
+The run prints what it needs (capability, step, reason, page, masked screenshot). In another
+terminal:
+
+```
+uv run cua operator list --runs-dir evidence
+uv run cua operator approve <run> --by <name>     # automation does this one step
+uv run cua operator take <run> --by <name>        # or do it yourself in the window...
+uv run cua operator release <run> --by <name>     # ...then hand back; the run re-checks the page
+uv run cua operator decline <run> --by <name>     # or say no
+```
+
+`<run>` is the run directory or any unique part of its id. Control lives in
+`<run>/control.json` (owner and epoch). Automation checks it before every action, so a `take` at
+any moment stops the run before its next action. While a person holds control, their clicks and
+selections are logged with their risk (typed text is never logged). Discovery takes `--handoff`
+too, to ask for approvals this way instead of on the terminal.

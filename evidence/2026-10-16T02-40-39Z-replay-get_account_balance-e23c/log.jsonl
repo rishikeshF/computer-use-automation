@@ -1,0 +1,19 @@
+{"t": "2026-10-16T02:40:39+00:00", "event": "faults_planned", "plan": {"slow_ms": 0, "http500_times": 0, "http500_path": null, "session_expire": false, "dialog": true}, "start_path": "/parabank/overview.htm"}
+{"t": "2026-10-16T02:40:39+00:00", "event": "replay_start", "capability": "get_account_balance@0.2.0", "status": "draft", "content_hash": "sha256:b2d493ef68ed8c659e99d43a15e14605e1549d98889b3a0ac75dc782a5495e76", "inputs": ["account_id"]}
+{"t": "2026-10-16T02:40:39+00:00", "event": "precondition", "name": "ensure_session", "why": "precondition"}
+{"t": "2026-10-16T02:40:39+00:00", "event": "replay_start", "capability": "ensure_session@0.2.0", "status": "draft", "content_hash": "sha256:e3348d1b8b94c9f794272ceb57752e79eb4fbf26459ef82cc4da2e6ee619f481", "inputs": ["password", "username"]}
+{"t": "2026-10-16T02:40:41+00:00", "event": "step", "step": "s1", "action": "navigate", "intent": "Open the bank login page", "screenshot": "001-s1.png"}
+{"t": "2026-10-16T02:40:41+00:00", "event": "resolved", "step": "s2", "strategy": 0, "attempts": [{"index": 0, "kind": "label_text", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:40:41+00:00", "event": "step", "step": "s2", "action": "fill", "intent": "Enter username", "screenshot": "002-s2.png"}
+{"t": "2026-10-16T02:40:41+00:00", "event": "resolved", "step": "s3", "strategy": 0, "attempts": [{"index": 0, "kind": "label_text", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:40:42+00:00", "event": "step", "step": "s3", "action": "fill", "intent": "Enter password", "screenshot": "003-s3.png"}
+{"t": "2026-10-16T02:40:42+00:00", "event": "resolved", "step": "s4", "strategy": 0, "attempts": [{"index": 0, "kind": "role_name", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:40:43+00:00", "event": "step", "step": "s4", "action": "click", "intent": "Click Log In", "screenshot": "004-s4.png"}
+{"t": "2026-10-16T02:40:44+00:00", "event": "step", "step": "s1", "action": "navigate", "intent": "Open the Accounts Overview page", "screenshot": "005-s1.png"}
+{"t": "2026-10-16T02:40:44+00:00", "event": "recovery", "note": "s2: dismissed unexpected dialog 'Your session will expire soon'"}
+{"t": "2026-10-16T02:40:45+00:00", "event": "resolved", "step": "s2", "strategy": 0, "attempts": [{"index": 0, "kind": "table_cell", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:40:45+00:00", "event": "step", "step": "s2", "action": "extract", "intent": "Read balance of the account", "screenshot": "006-s2.png"}
+{"t": "2026-10-16T02:40:45+00:00", "event": "resolved", "step": "s3", "strategy": 0, "attempts": [{"index": 0, "kind": "table_cell", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:40:45+00:00", "event": "step", "step": "s3", "action": "extract", "intent": "Read available amount", "screenshot": "007-s3.png"}
+{"t": "2026-10-16T02:40:45+00:00", "event": "faults_injected", "injected": ["alert() raised before s2"]}
+{"t": "2026-10-16T02:40:46+00:00", "event": "result", "result": {"status": "success", "outputs": {"balance": "515.50", "available": "515.50"}, "evidence": {"run_id": "2026-10-16T02-40-39Z-replay-get_account_balance-e23c", "dir": "evidence/2026-10-16T02-40-39Z-replay-get_account_balance-e23c", "artifact": {"id": "get_account_balance@0.2.0", "status": "draft", "content_hash": "sha256:b2d493ef68ed8c659e99d43a15e14605e1549d98889b3a0ac75dc782a5495e76"}, "recoveries": ["s2: dismissed unexpected dialog 'Your session will expire soon'"], "interventions": [], "raw_outputs": {"balance": "$515.50", "available": "$515.50"}, "warnings": []}}}

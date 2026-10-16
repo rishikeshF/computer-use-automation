@@ -18,7 +18,7 @@ import json
 from collections.abc import Iterable
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from cua.core.locator import LocatorChain
 from cua.core.outputs import OutputType
@@ -72,17 +72,29 @@ class Condition(_Model):
 class OutcomeDetector(_Model):
     """A business answer the app can give instead of the happy path, declared, not inferred.
 
-    Replay checks `when` before each step in `check_before`. If it holds, the run ends as
-    BusinessOutcome(code), not as a Failure. The `present` guard is what keeps the two apart:
+    Replay checks `when` before each step in `check_before` (account_not_found: the row to read
+    is missing), and while waiting for the result of each step in `check_after` (a login that
+    answers "could not be verified" instead of opening the overview). If it holds, the run ends
+    as BusinessOutcome(code), not as a Failure. The `present` guard is what keeps the two apart:
     if the page changed shape, the guard fails too, and the run is a Failure that a person
     should look at, never a false "account not found".
     """
 
     code: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")  # account_not_found
     message: str
-    check_before: tuple[str, ...] = Field(min_length=1)
+    check_before: tuple[str, ...] = ()
+    check_after: tuple[str, ...] = ()
     when: Condition
     rationale: str = ""  # why the recorder (or a reviewer) believes this, for review
+
+    @model_serializer(mode="wrap")
+    def _omit_unused(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        # check_after came after the first artifacts were sealed. Left out when empty, so those
+        # artifacts serialize exactly as before and keep their content_hash.
+        body: dict[str, object] = handler(self)
+        if not self.check_after:
+            body.pop("check_after", None)
+        return body
 
 
 class ParamValue(_Model):
@@ -143,13 +155,20 @@ class Provenance(_Model):
     reviewed_by: str | None = None
 
 
+# draft: recorded, not reviewed. Replays, but an irreversible step needs a person each time.
+# approved: reviewed. An irreversible capability runs when the caller also passes confirm.
+# deprecated: superseded or found wrong. Kept for the audit trail; replay refuses it.
+Status = Literal["draft", "approved", "deprecated"]
+
+
 class Capability(_Model):
     schema_version: int = SCHEMA_VERSION
     id: str  # "<name>@<version>"
     name: str = Field(pattern=r"^[a-z_][a-z0-9_]*$")
     version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     content_hash: str = ""
-    status: Literal["draft", "approved"] = "draft"
+    status: Status = "draft"
+    status_note: str = ""  # why, in the reviewer's words: "superseded by 0.2.0: ..."
     description: str
     app: AppInfo
     inputs: tuple[InputSpec, ...] = ()
@@ -165,10 +184,10 @@ class Capability(_Model):
 
     def behavior_hash(self) -> str:
         """sha256 over what the capability does. Excludes identity, status and provenance, so
-        approving or re-versioning an artifact does not change it."""
+        approving, deprecating or re-versioning an artifact does not change it."""
         body = self.model_dump(
             mode="json",
-            exclude={"id", "version", "content_hash", "status", "provenance"},
+            exclude={"id", "version", "content_hash", "status", "status_note", "provenance"},
         )
         canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
         return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
@@ -197,9 +216,11 @@ class Capability(_Model):
             if o.source_step not in extracts:
                 found.append(f"output {o.name!r} comes from {o.source_step!r}, not an extract step")
         for d in self.outcomes:
-            for sid in d.check_before:
+            if not d.check_before and not d.check_after:
+                found.append(f"outcome {d.code!r} is never checked (no check_before/check_after)")
+            for sid in d.check_before + d.check_after:
                 if sid not in step_ids:
-                    found.append(f"outcome {d.code!r} is checked before unknown step {sid!r}")
+                    found.append(f"outcome {d.code!r} is checked at unknown step {sid!r}")
         worst = max_risk([s.risk for s in self.steps])
         if _RISK_ORDER[worst] > _RISK_ORDER[self.risk]:
             found.append(f"capability risk {self.risk!r} is lower than its riskiest step ({worst})")

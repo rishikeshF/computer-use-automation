@@ -1,0 +1,25 @@
+{
+  "status": "success",
+  "outputs": {
+    "balance": "515.50",
+    "available": "515.50"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T02-40-39Z-replay-get_account_balance-e23c",
+    "dir": "evidence/2026-10-16T02-40-39Z-replay-get_account_balance-e23c",
+    "artifact": {
+      "id": "get_account_balance@0.2.0",
+      "status": "draft",
+      "content_hash": "sha256:b2d493ef68ed8c659e99d43a15e14605e1549d98889b3a0ac75dc782a5495e76"
+    },
+    "recoveries": [
+      "s2: dismissed unexpected dialog 'Your session will expire soon'"
+    ],
+    "interventions": [],
+    "raw_outputs": {
+      "balance": "$515.50",
+      "available": "$515.50"
+    },
+    "warnings": []
+  }
+}

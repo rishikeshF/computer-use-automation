@@ -22,10 +22,20 @@ class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class ArtifactRef(_Model):
+    """Exactly what ran: which artifact, its review status at the time, and its content."""
+
+    id: str  # get_account_balance@0.2.0
+    status: str  # draft | approved | deprecated
+    content_hash: str
+
+
 class Evidence(_Model):
     run_id: str
     dir: str  # where the redacted log and screenshots are, relative to the repo
+    artifact: ArtifactRef | None = None  # None for discovery, which has no artifact yet
     recoveries: tuple[str, ...] = ()
+    interventions: tuple[str, ...] = ()  # what a person approved or did, and who
     raw_outputs: dict[str, str] = {}  # outputs exactly as the screen showed them
     warnings: tuple[str, ...] = ()  # did not change the result, but a person should know
 

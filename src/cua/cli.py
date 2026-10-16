@@ -1,4 +1,4 @@
-"""Command line. Operator and catalog arrive with their milestones.
+"""Command line. The catalog arrives with its milestone.
 
     uv run cua discover --name get_account_balance \\
         --goal "Find the balance and available amount of an account" \\
@@ -6,6 +6,11 @@
 
     uv run cua replay artifacts/get_account_balance@0.2.0.json \\
         --input account_id=13344 [--inject http500] [--inject session_expire]
+
+    uv run cua replay artifacts/open_new_account@0.1.0.json --headed --handoff ...
+    uv run cua operator list | take | release | approve | decline <run>
+
+    uv run cua seal artifacts/ensure_session@0.2.0.json     (after a reviewer edits a draft)
 """
 
 from __future__ import annotations
@@ -25,14 +30,18 @@ from cua.core.artifact import Capability
 from cua.core.faults import FaultPlan, parse_faults
 from cua.core.policy import Policy
 from cua.core.result import BusinessOutcome, NeedsHuman, RunResult, Success
-from cua.core.runlog import RunLog, new_run_id, portable
+from cua.core.runlog import RunLog, new_run_id, portable, utc_now
 from cua.core.template import render
 from cua.core.url import canonical_path
-from cua.discover.agent import DiscoveryTask, discover
+from cua.discover.agent import Approver, DiscoveryTask, discover
 from cua.discover.recorder import RecorderError, record
 from cua.discover.session import login, logout
+from cua.handoff import control
+from cua.handoff.control import ControlError, ControlFile, Intervention, Lease
+from cua.handoff.runner import HumanHandoff
 from cua.llm.claude import DEFAULT_MODEL, AnthropicClient
 from cua.replay.engine import ReplayOptions, replay
+from cua.surface.capture import HumanCapture
 from cua.surface.faults import WebFaults
 from cua.surface.guarded import GuardedSurface
 from cua.surface.web import WebSurface
@@ -42,6 +51,8 @@ PARABANK = "https://parabank.parasoft.com/parabank"
 VENDOR = "parasoft/parabank"
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+operator = typer.Typer(no_args_is_help=True, help="Hand a paused run to a person, and back.")
+app.add_typer(operator, name="operator")
 
 
 @app.callback()
@@ -90,6 +101,15 @@ def next_version(artifacts: Path, name: str) -> str:
     return f"{major}.{minor + 1}.0"
 
 
+def newest_usable(artifacts: Path, name: str) -> Path | None:
+    """The highest version of a capability that is not deprecated. Preconditions use it."""
+    for _, path in sorted(versions(artifacts, name).items(), reverse=True):
+        cap = Capability.model_validate_json(path.read_text(encoding="utf-8"))
+        if cap.status != "deprecated":
+            return path
+    return None
+
+
 def load_artifact(path: Path) -> Capability:
     """Read an artifact and refuse it if its content no longer matches its hash: someone
     edited the steps by hand after review, and what runs must be what was reviewed."""
@@ -124,6 +144,9 @@ def discover_cmd(
         bool, typer.Option("--login", help="Start signed in (PARABANK_* creds).")
     ] = False,
     headed: Annotated[bool, typer.Option(help="Show the browser.")] = False,
+    handoff: Annotated[
+        bool, typer.Option(help="Ask for approvals through `cua operator`, not the terminal.")
+    ] = False,
     base_url: Annotated[str, typer.Option(help="App root.")] = PARABANK,
     policy: Annotated[Path, typer.Option(help="Policy file.")] = ROOT / "policies/parabank.yaml",
     runs_dir: Annotated[Path, typer.Option(help="Where the run log goes.")] = ROOT / "runs",
@@ -146,7 +169,9 @@ def discover_cmd(
         max_steps=max_steps,
         timeout_s=timeout,
     )
-    code = asyncio.run(_discover(task, sign_in, headed, policy, runs_dir, artifacts_dir, model))
+    code = asyncio.run(
+        _discover(task, sign_in, headed, handoff, policy, runs_dir, artifacts_dir, model)
+    )
     raise typer.Exit(code)
 
 
@@ -154,6 +179,7 @@ async def _discover(
     task: DiscoveryTask,
     sign_in: bool,
     headed: bool,
+    handoff: bool,
     policy_file: Path,
     runs_dir: Path,
     artifacts_dir: Path,
@@ -186,7 +212,11 @@ async def _discover(
                 api_key=env("ANTHROPIC_API_KEY"),
                 workspace_id=env("ANTHROPIC_WORKSPACE_ID"),
             )
-            run = await discover(task, surface, llm, log, approver=ask_human)
+            approver: Approver = ask_human
+            if handoff:
+                desk = HumanHandoff(ControlFile.create(log.dir, run_id), log, notify=to_stderr)
+                approver = operator_approver(desk, task.name)
+            run = await discover(task, surface, llm, log, approver=approver)
         finally:
             await logout(surface)
 
@@ -222,6 +252,30 @@ async def _discover(
     return 0
 
 
+def to_stderr(message: str) -> None:
+    typer.echo(message, err=True)
+
+
+def operator_approver(desk: HumanHandoff, name: str) -> Approver:
+    """Discovery's approval question, asked through control.json: `cua operator approve`."""
+    asked = 0
+
+    async def approve(what: str) -> bool:
+        nonlocal asked
+        asked += 1
+        iv = Intervention(
+            id=f"approval-{asked}",
+            kind="approval",
+            capability=f"{name} (discovery)",
+            intent=what,
+            reason="irreversible action held for approval",
+            requested_at=utc_now(),
+        )
+        return (await desk.request(iv)).kind == "approved"
+
+    return approve
+
+
 @app.command("replay")
 def replay_cmd(
     artifact: Annotated[Path, typer.Argument(help="Artifact JSON file.")],
@@ -233,6 +287,12 @@ def replay_cmd(
         bool, typer.Option(help="Allow an approved irreversible capability.")
     ] = False,
     headed: Annotated[bool, typer.Option(help="Show the browser.")] = False,
+    handoff: Annotated[
+        bool, typer.Option(help="Pause for a person (`cua operator`) instead of ending the run.")
+    ] = False,
+    handoff_timeout: Annotated[
+        float, typer.Option(help="Seconds to wait for a person before giving up.")
+    ] = 1800.0,
     base_url: Annotated[str, typer.Option(help="App root.")] = PARABANK,
     policy: Annotated[Path, typer.Option(help="Policy file.")] = ROOT / "policies/parabank.yaml",
     runs_dir: Annotated[Path, typer.Option(help="Where the run log goes.")] = ROOT / "runs",
@@ -240,7 +300,8 @@ def replay_cmd(
     / "artifacts",
 ) -> None:
     """Run an artifact with no model. Exit code: 0 success, 3 business outcome, 4 needs a human,
-    1 failure."""
+    1 failure. With --handoff a pause waits for a person instead of ending the run; add --headed
+    so they can act in the window."""
     cap = load_artifact(artifact)
     try:
         faults = parse_faults(inject)
@@ -253,6 +314,7 @@ def replay_cmd(
             faults,
             confirm,
             headed,
+            handoff_timeout if handoff else None,
             base_url,
             policy,
             runs_dir,
@@ -270,6 +332,7 @@ async def _replay(
     faults_plan: FaultPlan,
     confirm: bool,
     headed: bool,
+    handoff_timeout: float | None,  # None: no handoff
     base_url: str,
     policy_file: Path,
     runs_dir: Path,
@@ -280,10 +343,10 @@ async def _replay(
     # as PARABANK_<INPUT>, so credentials never appear on a command line or in shell history.
     pre: dict[str, tuple[Capability, dict[str, str]]] = {}
     for name in cap.preconditions:
-        found = versions(artifacts_dir, name)
-        if not found:
-            raise typer.BadParameter(f"precondition {name!r} has no artifact in {artifacts_dir}")
-        pre_cap = load_artifact(found[max(found)])
+        found = newest_usable(artifacts_dir, name)
+        if found is None:
+            raise typer.BadParameter(f"precondition {name!r} has no usable artifact")
+        pre_cap = load_artifact(found)
         pre_inputs = {i.name: env(f"PARABANK_{i.name.upper()}") or "" for i in pre_cap.inputs}
         pre[name] = (pre_cap, pre_inputs)
 
@@ -296,8 +359,28 @@ async def _replay(
 
     run_id = new_run_id(f"replay-{cap.name}")
     async with WebSurface.launch(headless=not headed, allowed_url=pol.url_allowed) as web:
-        surface = GuardedSurface(web, pol, sensitive=sensitive)
+        # With a handoff, control.json says who acts; the surface checks it before each action.
+        lease: Lease | None = None
+        if handoff_timeout is not None:
+            lease = Lease(ControlFile.create(runs_dir / run_id, run_id))
+        surface = GuardedSurface(web, pol, sensitive=sensitive, gate=lease)
         log = RunLog(runs_dir, run_id, surface.redact, base=ROOT)
+        desk: HumanHandoff | None = None
+        if lease is not None and handoff_timeout is not None:
+            capture = HumanCapture(
+                web, pol, surface.redact, log, human_holds=lease.control.human_holds
+            )
+            await capture.install()
+            desk = HumanHandoff(
+                lease.control,
+                log,
+                window=capture,
+                notify=to_stderr,
+                timeout_s=handoff_timeout,
+                lease=lease,
+            )
+            if not headed:
+                log.event("warning", message="handoff without --headed: approve or decline only")
         injector: WebFaults | None = None
         if faults_plan.active:
             injector = WebFaults(web, faults_plan)
@@ -314,9 +397,8 @@ async def _replay(
             pre_cap, pre_inputs = pre[name]
 
             async def establish() -> RunResult:
-                return await replay(
-                    pre_cap, pre_inputs, surface, log, ReplayOptions(base_url=base_url)
-                )
+                opts = ReplayOptions(base_url=base_url, handoff=desk)
+                return await replay(pre_cap, pre_inputs, surface, log, opts)
 
             return establish
 
@@ -325,16 +407,95 @@ async def _replay(
             confirm=confirm,
             preconditions={name: handler(name) for name in pre},
             hooks=injector,
+            handoff=desk,
         )
         try:
             result = await replay(cap, inputs, surface, log, options)
         finally:
             if injector is not None:
-                log.event("faults_injected", injected=injector.injected)
+                log.event("faults_injected", injected=injector.summary())
             await logout(surface)
         log.event("result", result=result.model_dump(mode="json"))
         log.result(result)
     return result
+
+
+@app.command("seal")
+def seal_cmd(artifact: Annotated[Path, typer.Argument(help="Draft artifact JSON file.")]) -> None:
+    """Recompute content_hash after a reviewer edited a draft (added an outcome, fixed a
+    locator). Only drafts: changing an approved artifact means a new version."""
+    cap = Capability.model_validate_json(artifact.read_text(encoding="utf-8"))
+    if cap.status != "draft":
+        raise typer.BadParameter(f"{artifact.name} is {cap.status}; only drafts can be re-sealed")
+    problems = cap.problems()
+    if problems:
+        raise typer.BadParameter("; ".join(problems))
+    sealed = cap.sealed()
+    artifact.write_text(sealed.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"{artifact.name}: {cap.content_hash} -> {sealed.content_hash}")
+
+
+# ---- operator: the person's side of a handoff ---------------------------------------------------
+
+RunsDir = Annotated[Path, typer.Option(help="Where runs are (evidence for demo runs).")]
+By = Annotated[str, typer.Option(help="Who is acting, for the evidence.")]
+
+
+def find_run(run: str, runs_dir: Path) -> ControlFile:
+    """A run by its directory, or by any unique part of its id."""
+    if (Path(run) / "control.json").exists():
+        return ControlFile(Path(run))
+    dirs = [d for d in runs_dir.glob("*") if (d / "control.json").exists() and run in d.name]
+    if len(dirs) != 1:
+        found = ", ".join(d.name for d in dirs) or "none"
+        raise typer.BadParameter(f"{run!r} matches {len(dirs)} handoff runs: {found}")
+    return ControlFile(dirs[0])
+
+
+def operate(run: str, runs_dir: Path, change: control.Change, verb: str) -> None:
+    cf = find_run(run, runs_dir)
+    try:
+        state = cf.update(change)
+    except ControlError as e:
+        typer.echo(f"{cf.dir.name}: {e}", err=True)
+        raise typer.Exit(2) from e
+    typer.echo(f"{cf.dir.name}: {verb}; {state.holder} holds control (epoch {state.epoch})")
+
+
+@operator.command("list")
+def op_list(runs_dir: RunsDir = ROOT / "runs") -> None:
+    """Runs waiting for a person, or held by one."""
+    for path in sorted(runs_dir.glob("*/control.json")):
+        s = ControlFile(path.parent).read()
+        if s.intervention is None and s.owner == "automation":
+            continue
+        iv = s.intervention
+        what = f"{iv.kind} at {iv.step_id or '-'}: {iv.reason}" if iv else "no request"
+        typer.echo(f"{s.run_id}  held by {s.holder}  epoch {s.epoch}  {what}")
+
+
+@operator.command("take")
+def op_take(run: str, runs_dir: RunsDir = ROOT / "runs", by: By = "operator") -> None:
+    """Take the live browser window. Automation stops before its next action."""
+    operate(run, runs_dir, control.take(by), "taken")
+
+
+@operator.command("release")
+def op_release(run: str, runs_dir: RunsDir = ROOT / "runs", by: By = "operator") -> None:
+    """Give control back. The run re-checks the page against the artifact, then resumes."""
+    operate(run, runs_dir, control.release(by), "released")
+
+
+@operator.command("approve")
+def op_approve(run: str, runs_dir: RunsDir = ROOT / "runs", by: By = "operator") -> None:
+    """Approve the waiting step. Automation does it, and only that step."""
+    operate(run, runs_dir, control.approve(by), "approved")
+
+
+@operator.command("decline")
+def op_decline(run: str, runs_dir: RunsDir = ROOT / "runs", by: By = "operator") -> None:
+    """Say no. The run ends without doing the step."""
+    operate(run, runs_dir, control.decline(by), "declined")
 
 
 if __name__ == "__main__":

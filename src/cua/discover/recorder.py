@@ -50,11 +50,10 @@ from cua.core.runlog import utc_now
 from cua.core.template import PLACEHOLDER, placeholders, templatize
 from cua.core.url import strip_session, url_pattern
 from cua.surface.base import Node
-from cua.surface.matching import Matchable, match_nodes
+from cua.surface.matching import MAX_ANCHOR_GAP_PX, Matchable, distance, match_nodes
 
 # Text nodes that can anchor a control ("Amount:" left of an input).
 _ANCHOR_ROLES = {"text", "cell", "columnheader", "heading"}
-_MAX_ANCHORS = 6  # nearest candidates tried; more only adds slower, worse anchors
 # Loading a page is safe to repeat; a 500 or a dropped connection on the way in is often
 # transient. Clicks and typing are never retried blindly: they may already have taken effect.
 _NAV_RETRY = Retry(max=2, backoff_ms=1000)
@@ -332,32 +331,36 @@ def _uses_params(s: Matchable) -> bool:
 
 
 def _anchor_candidates(node: Node, page: Sequence[Node]) -> list[TextAnchor]:
-    """TextAnchors from the nearest unique pieces of text left of and above the node."""
+    """TextAnchors from text that labels the node: on each side (left, above), the nearest thing
+    on the page must be a unique piece of text, within MAX_ANCHOR_GAP_PX.
+
+    "Nearest thing", not "nearest text": if another control sits in between, the text belongs
+    to that control. On a login form, "Password" is above the Log In button, but so is the
+    password field, so "Password" labels the field and not the button."""
     names = [n.name for n in page]
-    anchors = [
-        a
-        for a in page
-        if a.role in _ANCHOR_ROLES
-        and a.role != node.role
-        and a.frame == node.frame
-        and a.name
-        and a.name != node.name
-        and names.count(a.name) == 1
-    ]
-    anchors.sort(key=lambda a: _gap(a, node))
-    return [
-        TextAnchor(role=node.role, anchor=a.name, direction=d)
-        for a in anchors[:_MAX_ANCHORS]
-        for d in ("right_of", "below")
-    ]
-
-
-def _gap(a: Node, n: Node) -> float:
-    ax, ay, aw, ah = a.bbox
-    nx, ny, nw, nh = n.bbox
-    dx = max(0.0, nx - (ax + aw), ax - (nx + nw))
-    dy = max(0.0, ny - (ay + ah), ay - (ny + nh))
-    return dx + dy
+    found: list[TextAnchor] = []
+    # The node is right of an anchor on its left, and below an anchor above it.
+    for side, direction in (("left_of", "right_of"), ("above", "below")):
+        near = [
+            (d, n)
+            for n in page
+            if n.ref != node.ref
+            and n.frame == node.frame
+            and (d := distance(node, n, side)) is not None
+        ]
+        if not near:
+            continue
+        gap, a = min(near, key=lambda pair: pair[0])
+        if (
+            gap <= MAX_ANCHOR_GAP_PX
+            and a.role in _ANCHOR_ROLES
+            and a.role != node.role
+            and a.name
+            and a.name != node.name
+            and names.count(a.name) == 1
+        ):
+            found.append(TextAnchor(role=node.role, anchor=a.name, direction=direction))
+    return found
 
 
 def _param_strategy(s: Matchable, params: Mapping[str, str]) -> Matchable:

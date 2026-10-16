@@ -198,6 +198,20 @@ async def test_text_anchor_and_css_fallbacks(surface: WebSurface) -> None:
     assert css.attempts[0].note and "bbox" in css.attempts[0].note
 
 
+async def test_inline_text_anchors_the_link_beside_it(surface: WebSurface) -> None:
+    """The text's box is its own, not its paragraph's, so it sits left of the link inside it."""
+    await load(surface, "<p>Your new account number: <a href='#'>13566</a></p>")
+    found = await surface.resolve(
+        LocatorChain(
+            strategies=(
+                TextAnchor(role="link", anchor="Your new account number:", direction="right_of"),
+            )
+        )
+    )
+    assert isinstance(found, Resolved) and found.node is not None
+    assert found.node.name == "13566"
+
+
 # ---- act ----------------------------------------------------------------------------------------
 
 

@@ -1,0 +1,13 @@
+{
+  "status": "success",
+  "outputs": {},
+  "evidence": {
+    "run_id": "2026-10-16T02-37-00Z-discover-ensure_session-7b07",
+    "dir": "evidence/2026-10-16T02-37-00Z-discover-ensure_session-7b07",
+    "artifact": null,
+    "recoveries": [],
+    "interventions": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

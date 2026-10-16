@@ -1,0 +1,19 @@
+{
+  "status": "business_outcome",
+  "code": "invalid_credentials",
+  "message": "The bank did not accept the username and password.",
+  "step_id": "s4",
+  "evidence": {
+    "run_id": "2026-10-16T02-38-17Z-replay-ensure_session-2d57",
+    "dir": "evidence/2026-10-16T02-38-17Z-replay-ensure_session-2d57",
+    "artifact": {
+      "id": "ensure_session@0.2.0",
+      "status": "draft",
+      "content_hash": "sha256:e3348d1b8b94c9f794272ceb57752e79eb4fbf26459ef82cc4da2e6ee619f481"
+    },
+    "recoveries": [],
+    "interventions": [],
+    "raw_outputs": {},
+    "warnings": []
+  }
+}

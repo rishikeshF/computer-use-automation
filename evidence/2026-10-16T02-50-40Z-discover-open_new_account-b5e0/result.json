@@ -1,0 +1,17 @@
+{
+  "status": "success",
+  "outputs": {
+    "new_account_id": "*4152"
+  },
+  "evidence": {
+    "run_id": "2026-10-16T02-50-40Z-discover-open_new_account-b5e0",
+    "dir": "evidence/2026-10-16T02-50-40Z-discover-open_new_account-b5e0",
+    "artifact": null,
+    "recoveries": [],
+    "interventions": [],
+    "raw_outputs": {
+      "new_account_id": "*4152"
+    },
+    "warnings": []
+  }
+}

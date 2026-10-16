@@ -1,240 +1,34 @@
-"""Replay end to end on a fake ParaBank, with faults. No model, no network.
+"""Replay end to end on the fake bank (tests/fakebank.py), with faults. No model, no network."""
 
-The fake bank copies the real one where it matters:
-  - no session: the overview shows the login form AND "An internal error has occurred"
-  - the account rows arrive after the table frame (filled by script, like the real XHR)
-  - the session is a cookie, so clearing cookies expires it
-"""
-
+import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from playwright.async_api import Browser, Route, async_playwright
+from playwright.async_api import Browser, async_playwright
 
-from cua.core.artifact import (
-    AppInfo,
-    Capability,
-    Checkpoint,
-    Condition,
-    InputSpec,
-    OutcomeDetector,
-    OutputSpec,
-    ParamValue,
-    Provenance,
-    Retry,
-    Step,
-)
+from cua.core.artifact import Capability
 from cua.core.faults import FaultPlan
-from cua.core.locator import LabelText, LocatorChain, RoleName, TableCell
-from cua.core.policy import Policy, PolicyConfig
-from cua.core.result import BusinessOutcome, Failure, RunResult, Success
+from cua.core.result import BusinessOutcome, Failure, NeedsHuman, RunResult, Success
 from cua.core.runlog import RunLog
 from cua.replay.engine import ReplayOptions, replay
 from cua.surface.faults import WebFaults
-from cua.surface.guarded import GuardedSurface
-from cua.surface.web import WebSurface
-
-ORIGIN = "https://bank.test"
-BASE = f"{ORIGIN}/bank"
-GOOD, BAD = "13344", "99999"
-CREDS = {"username": "alice", "password": "hunter2-secret"}
-
-
-@dataclass
-class Bank:
-    rows_after_ms: int = 0  # -1: the rows never arrive
-    balance_header: str = "Balance*"
-
-
-LOGIN = """<h2>Customer Login</h2>
-  <p>Username</p><input name="u"><p>Password</p><input type="password" name="p">
-  <button onclick="document.cookie='session=1; path=/'; location='/bank/overview.htm'">
-    Log In</button>"""
-
-
-def overview(bank: Bank) -> str:
-    rows = f"""
-      <tr><td><a href="/bank/activity.htm?id={GOOD}">{GOOD}</a></td>
-          <td>$515.50</td><td>$500.00</td></tr>
-      <tr><td><a href="/bank/activity.htm?id=54321">54321</a></td>
-          <td>$10.00</td><td>$10.00</td></tr>
-      <tr><td>Total</td><td>$525.50</td><td></td></tr>"""
-    # The rows arrive by script after a delay, like ParaBank's XHR-filled table.
-    script = f"document.getElementById('rows').innerHTML = `{rows}`"
-    fill = (
-        ""
-        if bank.rows_after_ms < 0
-        else f"<script>setTimeout(() => {{ {script} }}, {bank.rows_after_ms})</script>"
-    )
-    return f"""<h2>Account Services</h2><a href="/bank/overview.htm">Accounts Overview</a>
-      <a href="#">Log Out</a>
-      <h1>Accounts Overview</h1>
-      <table><thead><tr>
-        <th>Account</th><th>{bank.balance_header}</th><th>Available Amount</th>
-      </tr></thead>
-      <tbody id="rows"></tbody></table>{fill}"""
-
-
-def handler(bank: Bank):  # type: ignore[no-untyped-def]
-    async def serve(route: Route) -> None:
-        path = route.request.url.removeprefix(ORIGIN).split("?")[0]
-        cookie = (await route.request.all_headers()).get("cookie", "")
-        if path == "/bank/index.htm":
-            body = LOGIN
-        elif path == "/bank/overview.htm":
-            body = (
-                overview(bank)
-                if "session=1" in cookie
-                else (
-                    LOGIN
-                    + "<h1>Error!</h1><p>An internal error has occurred and has been logged.</p>"
-                )
-            )
-        else:
-            await route.fulfill(status=404, body="not found")
-            return
-        await route.fulfill(content_type="text/html", body=body)
-
-    return serve
-
-
-POLICY = Policy(
-    PolicyConfig(
-        name="test",
-        origins=[ORIGIN],
-        allow_paths=["/bank/*"],
-        actions=["click", "fill", "select", "navigate"],
-        risk={"reversible": [{"role": "button", "name": "log in"}]},
-        sensitive_inputs=["pass", "user", "account"],
-    )
+from tests.fakebank import (
+    BAD,
+    BALANCE,
+    BASE,
+    CREDS,
+    GOOD,
+    NEW_ID,
+    OPEN,
+    OPEN_INPUTS,
+    OPEN_THEN_OVERVIEW,
+    SESSION,
+    Bank,
+    open_session,
+    replay_in,
 )
-PROV = Provenance(discovered_at="2026-10-16T00:00:00+00:00", model="test", run_id="r", goal="g")
-OVERVIEW_CP = Checkpoint(url_pattern="/bank/overview.htm", landmark_text="Accounts Overview")
-FAST = 3_000  # step timeout in these tests
-
-
-def cell(col: str) -> LocatorChain:
-    return LocatorChain(strategies=(TableCell(role="cell", row="{{account_id}}", col=col),))
-
-
-BALANCE = Capability(
-    id="get_account_balance@0.1.0",
-    name="get_account_balance",
-    version="0.1.0",
-    description="Balance of one account",
-    app=AppInfo(vendor="test"),
-    inputs=(InputSpec(name="account_id", sensitive=True),),
-    outputs=(
-        OutputSpec(name="balance", type="decimal", unit="USD", source_step="s2"),
-        OutputSpec(name="available", type="decimal", unit="USD", source_step="s3"),
-    ),
-    preconditions=("ensure_session",),
-    steps=(
-        Step(
-            id="s1",
-            intent="Open the Accounts Overview page",
-            action="navigate",
-            value="{{base_url}}/overview.htm",
-            post=OVERVIEW_CP,
-            retry=Retry(max=2, backoff_ms=50),
-            timeout_ms=FAST,
-        ),
-        Step(
-            id="s2",
-            intent="Read balance",
-            action="extract",
-            target=cell("Balance*"),
-            value="balance",
-            pre=OVERVIEW_CP,
-            timeout_ms=FAST,
-        ),
-        Step(
-            id="s3",
-            intent="Read available",
-            action="extract",
-            target=cell("Available Amount"),
-            value="available",
-            pre=OVERVIEW_CP,
-            timeout_ms=FAST,
-        ),
-    ),
-    success=OVERVIEW_CP,
-    outcomes=(
-        OutcomeDetector(
-            code="account_not_found",
-            message="No account with the given account_id on Accounts Overview.",
-            check_before=("s2", "s3"),
-            when=Condition(
-                page=OVERVIEW_CP,
-                present=(
-                    LocatorChain(strategies=(RoleName(role="columnheader", name="Account"),)),
-                    LocatorChain(strategies=(RoleName(role="columnheader", name="Balance*"),)),
-                    LocatorChain(strategies=(TableCell(role="cell", row="*", col="Balance*"),)),
-                ),
-                absent=(LocatorChain(strategies=(RoleName(role="link", name="{{account_id}}"),)),),
-            ),
-        ),
-    ),
-    risk="read_only",
-    provenance=PROV,
-).sealed()
-
-
-def labelled(label: str) -> LocatorChain:
-    return LocatorChain(strategies=(LabelText(role="textbox", label=label),))
-
-
-SESSION = Capability(
-    id="ensure_session@0.1.0",
-    name="ensure_session",
-    version="0.1.0",
-    description="Sign in",
-    app=AppInfo(vendor="test"),
-    inputs=(InputSpec(name="username", sensitive=True), InputSpec(name="password", sensitive=True)),
-    steps=(
-        Step(
-            id="s1",
-            intent="Open login",
-            action="navigate",
-            value="{{base_url}}/index.htm",
-            post=Checkpoint(url_pattern="/bank/index.htm"),
-            timeout_ms=FAST,
-        ),
-        Step(
-            id="s2",
-            intent="Type user",
-            action="fill",
-            target=labelled("Username"),
-            value=ParamValue(param="username"),
-            risk="reversible",
-            timeout_ms=FAST,
-        ),
-        Step(
-            id="s3",
-            intent="Type password",
-            action="fill",
-            target=labelled("Password"),
-            value=ParamValue(param="password"),
-            risk="reversible",
-            timeout_ms=FAST,
-        ),
-        Step(
-            id="s4",
-            intent="Sign in",
-            action="click",
-            target=LocatorChain(strategies=(RoleName(role="button", name="Log In"),)),
-            post=OVERVIEW_CP,
-            risk="reversible",
-            timeout_ms=FAST,
-        ),
-    ),
-    success=OVERVIEW_CP,
-    risk="reversible",
-    provenance=PROV,
-).sealed()
 
 
 @pytest.fixture(scope="session")
@@ -253,27 +47,16 @@ async def run(
     bank: Bank | None = None,
     faults: FaultPlan | None = None,
     cap: Capability = BALANCE,
+    creds: dict[str, str] = CREDS,
 ) -> tuple[RunResult, RunLog, WebFaults | None]:
-    context = await browser.new_context()
-    await context.route(f"{ORIGIN}/**", handler(bank or Bank()))
-    web = WebSurface(await context.new_page(), polite_delay_ms=0, action_timeout_ms=2_000)
-    await web.guard_navigation(POLICY.url_allowed)
-    surface = GuardedSurface(web, POLICY, sensitive={"account_id": account, **CREDS})
-    log = RunLog(tmp_path, "run", surface.redact, base=tmp_path)
-    injector = None
-    if faults is not None:
-        injector = WebFaults(web, faults)
-        await injector.install("/bank/overview.htm")
-
-    async def sign_in() -> RunResult:
-        return await replay(SESSION, CREDS, surface, log, ReplayOptions(base_url=BASE))
-
-    opts = ReplayOptions(base_url=BASE, preconditions={"ensure_session": sign_in}, hooks=injector)
+    s = await open_session(
+        browser, tmp_path, bank or Bank(), sensitive={"account_id": account}, faults=faults
+    )
     try:
-        result = await replay(cap, {"account_id": account}, surface, log, opts)
+        result = await replay_in(s, cap, {"account_id": account}, creds=creds)
     finally:
-        await context.close()
-    return result, log, injector
+        await s.web.page.context.close()
+    return result, s.log, s.faults
 
 
 # ---- the four M4 scenarios ---------------------------------------------------------------------
@@ -362,3 +145,119 @@ async def test_unexpected_dialog_is_dismissed_and_noted(browser: Browser, tmp_pa
 async def test_inputs_are_checked_before_anything_runs(browser: Browser, tmp_path: Path) -> None:
     result, _, _ = await run(browser, tmp_path, "")
     assert isinstance(result, Failure) and result.kind == "invalid_input"
+
+
+# ---- evidence and review status ----------------------------------------------------------------
+
+
+async def test_evidence_records_which_artifact_ran_and_its_status(
+    browser: Browser, tmp_path: Path
+) -> None:
+    result, log, _ = await run(browser, tmp_path, GOOD)
+    ref = result.evidence.artifact
+    assert ref is not None
+    assert (ref.id, ref.status, ref.content_hash) == (BALANCE.id, "draft", BALANCE.content_hash)
+    start = json.loads((log.dir / "log.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert start["event"] == "replay_start" and start["status"] == "draft"
+
+
+async def test_deprecated_artifact_is_refused(browser: Browser, tmp_path: Path) -> None:
+    old = BALANCE.model_copy(update={"status": "deprecated", "status_note": "superseded by 0.2.0"})
+    assert old.behavior_hash() == BALANCE.content_hash  # status is review metadata, not behavior
+    result, _, _ = await run(browser, tmp_path, GOOD, cap=old)
+    assert isinstance(result, Failure) and result.kind == "policy_violation", result
+    assert result.observed is not None and "superseded by 0.2.0" in result.observed
+
+
+# ---- invalid credentials -----------------------------------------------------------------------
+
+WRONG = {"username": "mallory", "password": "nope"}
+
+
+async def test_wrong_password_is_invalid_credentials_not_an_app_error(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """The bank answers under an "Error!" heading. The declared outcome is checked first, so this
+    is a business answer, not a server fault."""
+    s = await open_session(browser, tmp_path, Bank(), sensitive={})
+    try:
+        result = await replay(SESSION, WRONG, s.surface, s.log, ReplayOptions(base_url=BASE))
+    finally:
+        await s.web.page.context.close()
+    assert isinstance(result, BusinessOutcome), result
+    assert (result.code, result.step_id) == ("invalid_credentials", "s4")
+
+
+async def test_invalid_credentials_in_a_precondition_is_the_callers_answer(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """The test user is gone after a database reset: a real business outcome, not a bug."""
+    result, _, _ = await run(browser, tmp_path, GOOD, creds=WRONG)
+    assert isinstance(result, BusinessOutcome), result
+    assert (result.code, result.step_id) == ("invalid_credentials", "ensure_session:s4")
+
+
+# ---- after an irreversible step: no rewind, no retry, no re-click ------------------------------
+
+
+async def open_account(
+    browser: Browser, tmp_path: Path, bank: Bank, *, faults: FaultPlan | None = None
+) -> tuple[RunResult, WebFaults | None]:
+    """Run an approved open-account capability with confirm=true: no person involved."""
+    cap = OPEN_THEN_OVERVIEW if faults else OPEN
+    approved = cap.model_copy(update={"status": "approved"})
+    s = await open_session(
+        browser, tmp_path, bank, sensitive={"funding_account_id": GOOD}, faults=faults
+    )
+    try:
+        return await replay_in(s, approved, OPEN_INPUTS, confirm=True), s.faults
+    finally:
+        await s.web.page.context.close()
+
+
+async def test_approved_irreversible_capability_runs_once(browser: Browser, tmp_path: Path) -> None:
+    bank = Bank()
+    result, _ = await open_account(browser, tmp_path, bank)
+    assert isinstance(result, Success), result
+    assert result.outputs == {"new_account_id": NEW_ID}
+    assert bank.creates == 1
+
+
+async def test_draft_irreversible_capability_is_refused_without_a_person(
+    browser: Browser, tmp_path: Path
+) -> None:
+    bank = Bank()
+    s = await open_session(browser, tmp_path, bank, sensitive={})
+    try:
+        result = await replay_in(s, OPEN, OPEN_INPUTS, confirm=True)  # confirm needs approved
+    finally:
+        await s.web.page.context.close()
+    assert isinstance(result, Failure) and result.kind == "policy_violation", result
+    assert bank.creates == 0
+
+
+async def test_session_lost_after_commit_needs_a_human_and_never_reclicks(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """The session dies right after the account is opened. Before an irreversible step the engine
+    would sign in again and rewind to the last page load (s1), which would open a second
+    account. After it, the run stops and asks."""
+    bank = Bank(expire_on_create=True)
+    result, _ = await open_account(browser, tmp_path, bank)
+    assert isinstance(result, NeedsHuman), result
+    assert result.step_id == "s4"
+    assert "session expired after irreversible step s4" in result.reason
+    assert bank.creates == 1
+    assert result.evidence.recoveries == ()  # no re-login was attempted
+
+
+async def test_failed_page_load_after_commit_is_not_retried(
+    browser: Browser, tmp_path: Path
+) -> None:
+    bank = Bank()
+    faults = FaultPlan(http500_times=1, http500_path="/bank/overview.htm")
+    result, injector = await open_account(browser, tmp_path, bank, faults=faults)
+    assert isinstance(result, NeedsHuman), result
+    assert result.step_id == "s6" and "not retrying" in result.reason
+    assert injector is not None and len(injector.injected) == 1  # one load, no retry
+    assert bank.creates == 1

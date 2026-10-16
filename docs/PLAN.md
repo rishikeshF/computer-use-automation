@@ -46,8 +46,9 @@ src/cua/
     faults.py       # route-interception fault injection
   handoff/
     control.py      # control lease (owner, epoch) in runs/<id>/control.json
-    capture.py      # injected listeners recording human actions
-    operator.py     # CLI: list / take / release
+    runner.py       # the run's side: open an intervention, wait for the operator
+                    # (capture lives in surface/capture.py: only surface touches Playwright;
+                    #  the operator CLI is `cua operator` in cli.py)
   llm/              # LLMClient protocol + anthropic/openai adapters
   cli.py            # discover, replay, operator, catalog
 policies/parabank.yaml

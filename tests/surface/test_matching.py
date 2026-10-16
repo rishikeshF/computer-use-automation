@@ -79,3 +79,11 @@ def test_table_cell_matches_row_and_column() -> None:
     ]
     assert [n.ref for n in match_nodes(TableCell(role="cell", row="Balance:"), cells)] == ["a"]
     assert match_nodes(TableCell(role="cell", row="Balance:", col="Amount"), cells) == []
+
+
+def test_text_anchor_ignores_candidates_beyond_the_gap_cap() -> None:
+    far = [
+        node("t", "text", "Amount", bbox=(0, 0, 60, 20)),
+        node("i", "textbox", bbox=(300, 0, 100, 20)),  # 240 px away: not labelled by "Amount"
+    ]
+    assert match_nodes(TextAnchor(role="textbox", anchor="Amount", direction="right_of"), far) == []

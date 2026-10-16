@@ -39,6 +39,7 @@ class WebFaults:
         self._armed = False
         self._dialog_sent = False
         self.injected: list[str] = []  # what actually happened, for evidence
+        self.slowed = 0  # responses delayed; one line in the summary, not one per request
 
     async def install(self, start_path: str | None) -> None:
         """Install the route-level faults. `start_path` is the page step s1 opens; http500
@@ -64,8 +65,14 @@ class WebFaults:
             await route.fulfill(status=500, content_type="text/html", body=_ERROR_PAGE)
             return
         if self._plan.slow_ms and request.resource_type in ("document", "xhr", "fetch"):
+            self.slowed += 1
             await asyncio.sleep(self._plan.slow_ms / 1000)
         await route.fallback()
+
+    def summary(self) -> list[str]:
+        """Everything injected, for the run log."""
+        slow = [f"slow: {self.slowed} responses delayed {self._plan.slow_ms} ms"]
+        return self.injected + (slow if self.slowed else [])
 
     async def before_step(self, step: Step) -> None:
         self._armed = True

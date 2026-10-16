@@ -1,0 +1,9 @@
+{"t": "2026-10-16T02:38:17+00:00", "event": "replay_start", "capability": "ensure_session@0.2.0", "status": "draft", "content_hash": "sha256:e3348d1b8b94c9f794272ceb57752e79eb4fbf26459ef82cc4da2e6ee619f481", "inputs": ["password", "username"]}
+{"t": "2026-10-16T02:38:19+00:00", "event": "step", "step": "s1", "action": "navigate", "intent": "Open the bank login page", "screenshot": "001-s1.png"}
+{"t": "2026-10-16T02:38:19+00:00", "event": "resolved", "step": "s2", "strategy": 0, "attempts": [{"index": 0, "kind": "label_text", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:38:20+00:00", "event": "step", "step": "s2", "action": "fill", "intent": "Enter username", "screenshot": "002-s2.png"}
+{"t": "2026-10-16T02:38:20+00:00", "event": "resolved", "step": "s3", "strategy": 0, "attempts": [{"index": 0, "kind": "label_text", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:38:20+00:00", "event": "step", "step": "s3", "action": "fill", "intent": "Enter password", "screenshot": "003-s3.png"}
+{"t": "2026-10-16T02:38:20+00:00", "event": "resolved", "step": "s4", "strategy": 0, "attempts": [{"index": 0, "kind": "role_name", "matches": 1, "note": null}]}
+{"t": "2026-10-16T02:38:21+00:00", "event": "business_outcome", "step": "s4", "code": "invalid_credentials"}
+{"t": "2026-10-16T02:38:21+00:00", "event": "result", "result": {"status": "business_outcome", "code": "invalid_credentials", "message": "The bank did not accept the username and password.", "step_id": "s4", "evidence": {"run_id": "2026-10-16T02-38-17Z-replay-ensure_session-2d57", "dir": "evidence/2026-10-16T02-38-17Z-replay-ensure_session-2d57", "artifact": {"id": "ensure_session@0.2.0", "status": "draft", "content_hash": "sha256:e3348d1b8b94c9f794272ceb57752e79eb4fbf26459ef82cc4da2e6ee619f481"}, "recoveries": [], "interventions": [], "raw_outputs": {}, "warnings": []}}}

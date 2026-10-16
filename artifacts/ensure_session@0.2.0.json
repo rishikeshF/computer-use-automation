@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "id": "ensure_session@0.2.0",
+  "name": "ensure_session",
+  "version": "0.2.0",
+  "content_hash": "sha256:e3348d1b8b94c9f794272ceb57752e79eb4fbf26459ef82cc4da2e6ee619f481",
+  "status": "draft",
+  "status_note": "",
+  "description": "Sign in to the bank with the given username and password, and end on the accounts overview",
+  "app": {
+    "vendor": "parasoft/parabank",
+    "app_version_fingerprint": "nav:1180982cc586fdcb",
+    "base_url_param": "base_url"
+  },
+  "inputs": [
+    {
+      "name": "username",
+      "type": "string",
+      "required": true,
+      "sensitive": true,
+      "pattern": null,
+      "description": ""
+    },
+    {
+      "name": "password",
+      "type": "string",
+      "required": true,
+      "sensitive": true,
+      "pattern": null,
+      "description": ""
+    }
+  ],
+  "outputs": [],
+  "preconditions": [],
+  "steps": [
+    {
+      "id": "s1",
+      "intent": "Open the bank login page",
+      "action": "navigate",
+      "target": null,
+      "value": "{{base_url}}",
+      "pre": null,
+      "post": {
+        "url_pattern": "/parabank/index.htm",
+        "landmark_text": "Customer Login",
+        "element_present": null
+      },
+      "risk": "read_only",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 2,
+        "backoff_ms": 1000,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s2",
+      "intent": "Enter username",
+      "action": "fill",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "label_text",
+            "role": "textbox",
+            "label": "Username"
+          },
+          {
+            "kind": "text_anchor",
+            "role": "textbox",
+            "anchor": "Username",
+            "direction": "below"
+          }
+        ]
+      },
+      "value": {
+        "param": "username"
+      },
+      "pre": {
+        "url_pattern": "/parabank/index.htm",
+        "landmark_text": "Customer Login",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/index.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "reversible",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s3",
+      "intent": "Enter password",
+      "action": "fill",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "label_text",
+            "role": "textbox",
+            "label": "Password"
+          },
+          {
+            "kind": "text_anchor",
+            "role": "textbox",
+            "anchor": "Password",
+            "direction": "below"
+          }
+        ]
+      },
+      "value": {
+        "param": "password"
+      },
+      "pre": {
+        "url_pattern": "/parabank/index.htm",
+        "landmark_text": "Customer Login",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/index.htm",
+        "landmark_text": null,
+        "element_present": null
+      },
+      "risk": "reversible",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    },
+    {
+      "id": "s4",
+      "intent": "Click Log In",
+      "action": "click",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "kind": "role_name",
+            "role": "button",
+            "name": "Log In"
+          }
+        ]
+      },
+      "value": null,
+      "pre": {
+        "url_pattern": "/parabank/index.htm",
+        "landmark_text": "Customer Login",
+        "element_present": null
+      },
+      "post": {
+        "url_pattern": "/parabank/overview.htm",
+        "landmark_text": "Account Services",
+        "element_present": null
+      },
+      "risk": "reversible",
+      "timeout_ms": 10000,
+      "retry": {
+        "max": 0,
+        "backoff_ms": 500,
+        "on": [
+          "transient"
+        ]
+      },
+      "review_notes": []
+    }
+  ],
+  "success": {
+    "url_pattern": "/parabank/overview.htm",
+    "landmark_text": "Account Services",
+    "element_present": null
+  },
+  "outcomes": [
+    {
+      "code": "invalid_credentials",
+      "message": "The bank did not accept the username and password.",
+      "check_before": [],
+      "check_after": [
+        "s4"
+      ],
+      "when": {
+        "page": {
+          "url_pattern": "/parabank/login.htm",
+          "landmark_text": "Error!",
+          "element_present": null
+        },
+        "present": [
+          {
+            "frame": [],
+            "strategies": [
+              {
+                "kind": "role_name",
+                "role": "text",
+                "name": "The username and password could not be verified."
+              }
+            ]
+          }
+        ],
+        "absent": []
+      },
+      "rationale": "Added in review. Seen on ParaBank on 2026-10-15 with an unknown user: Log In leads to login.htm with an 'Error!' heading and this sentence. The sentence is the guard: a server fault also shows 'Error!' but not this text, so it stays an app_error. After a database reset the test user is gone and every sign-in ends here."
+    }
+  ],
+  "recovery": [],
+  "risk": "reversible",
+  "provenance": {
+    "discovered_at": "2026-10-16T02:37:30+00:00",
+    "model": "claude-sonnet-5-5",
+    "run_id": "2026-10-16T02-37-00Z-discover-ensure_session-7b07",
+    "goal": "Sign in to the bank with the given username and password, and end on the accounts overview",
+    "reviewed_by": null
+  },
+  "overrides": {}
+}

@@ -287,3 +287,41 @@ def test_no_detector_without_a_guard() -> None:
 def test_amount_output_is_typed() -> None:
     (out,) = make([READ_BALANCE]).outputs
     assert (out.type, out.unit) == ("decimal", "USD")
+
+
+# ParaBank's login form as the snapshot sees it (boxes from the live site, 2026-10-15).
+LOGIN_FORM = (
+    n("sol", "text", "Solutions", bbox=(293, 76, 137, 23)),
+    n("cl", "heading", "Customer Login", bbox=(293, 251, 164, 34)),
+    n("ut", "text", "Username", bbox=(293, 287, 63, 15)),
+    n("u", "textbox", label="Username", bbox=(293, 305, 146, 18)),
+    n("pt", "text", "Password", bbox=(293, 335, 61, 15)),
+    n("p", "textbox", label="Password", states=("secret",), bbox=(293, 353, 146, 18)),
+    n("b", "button", "Log In", bbox=(293, 382, 66, 19)),
+)
+
+
+def test_text_anchor_only_from_the_text_that_labels_the_control() -> None:
+    """The field's own label is kept. "Customer Login" and "Solutions" are above it too, but
+    the label sits in between, so they describe the page, not the field."""
+    chain, _ = locator_for(LOGIN_FORM[3], LOGIN_FORM, {})
+    assert chain.strategies == (
+        LabelText(role="textbox", label="Username"),
+        TextAnchor(role="textbox", anchor="Username", direction="below"),
+    )
+
+
+def test_button_is_not_anchored_to_another_fields_label() -> None:
+    """ "Password" is above Log In, but the password field is closer: it is that field's label."""
+    chain, _ = locator_for(LOGIN_FORM[6], LOGIN_FORM, {})
+    assert chain.strategies == (RoleName(role="button", name="Log In"),)
+
+
+def test_distant_text_is_not_an_anchor() -> None:
+    page = (
+        n("t", "text", "Amount", bbox=(0, 0, 60, 20)),
+        n("i", "textbox", bbox=(400, 0, 100, 20)),  # 340 px to the right: not its label
+    )
+    chain, notes = locator_for(page[1], page, {})
+    assert not any(isinstance(s, TextAnchor) for s in chain.strategies)
+    assert notes  # nothing could be proven, and the review notes say so

@@ -17,6 +17,9 @@ from cua.surface.base import Node
 
 # Two candidates closer than this (in px) to the anchor count as a tie, so the match is ambiguous.
 _TIE_PX = 1.0
+# A label sits next to what it labels. Text further away than this is page furniture, and a
+# control "below 'Solutions'" 300 px down is a guess, not a description.
+MAX_ANCHOR_GAP_PX = 40.0
 # How far a candidate may overlap the anchor's edge and still count as "beside" it.
 _EDGE_SLACK_PX = 2.0
 
@@ -62,7 +65,7 @@ def _match_anchor(s: TextAnchor, nodes: Sequence[Node]) -> list[Node]:
             (d, n)
             for n in nodes
             if n.role == s.role and n.frame == a.frame
-            if (d := _distance(a, n, s.direction)) is not None
+            if (d := distance(a, n, s.direction)) is not None and d <= MAX_ANCHOR_GAP_PX
         ),
         key=lambda pair: pair[0],
     )
@@ -74,7 +77,7 @@ def _match_anchor(s: TextAnchor, nodes: Sequence[Node]) -> list[Node]:
     return best
 
 
-def _distance(a: Node, n: Node, direction: str) -> float | None:
+def distance(a: Node, n: Node, direction: str) -> float | None:
     """Gap from anchor a to candidate n in the given direction, or None if n is not that way."""
     ax, ay, aw, ah = a.bbox
     nx, ny, nw, nh = n.bbox
