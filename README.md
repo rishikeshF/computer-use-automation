@@ -45,7 +45,7 @@ uv run cua replay $A --offline $P --inject http500           # page load retried
 uv run cua replay $A --offline $P --inject http500:3         # retries used up: app_error (exit 1)
 uv run cua replay $A --offline $P --inject dialog            # alert dismissed and noted
 uv run cua replay $A --offline $P --variant tenants/variants/tenant_b.yaml     --tenant tenants/tenant_b.yaml                           # another tenant: see Tenants
-uv run pytest                                                # 167 tests, all offline
+uv run pytest                                                # 170 tests, all offline
 ```
 
 Each run prints its result and writes a redacted log and screenshots to `runs/<run id>/`.
