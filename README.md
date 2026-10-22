@@ -5,6 +5,8 @@ The run becomes a typed, versioned capability artifact. Production replays that 
 deterministically, with no LLM in the loop. When it cannot go on safely, a person takes over the
 same live browser and hands it back.
 
+![Architecture: a goal goes through one model run (discover/agent.py, then the recorder) into a typed, versioned capability artifact. The replay engine runs that artifact with no model, checking every step, recovering from session expiry, failed loads and dialogs, and returning success, business_outcome, needs_human or failure. When a person is needed, an intervention request is written to control.json and the operator takes the same live browser. Every action from discovery, replay and the person goes through GuardedSurface (policy, control lease, masking) to the Playwright surface and ParaBank.](docs/architecture.svg)
+
 Target: the public [ParaBank](https://parabank.parasoft.com/parabank/) demo bank (built by
 Parasoft for test automation). Design write-up: [REPORT.md](REPORT.md).
 

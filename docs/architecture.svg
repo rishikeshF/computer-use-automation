@@ -1,0 +1,285 @@
+<svg viewBox="0 0 1400 1330" width="1400" height="1330" xmlns="http://www.w3.org/2000/svg" font-family="'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif">
+<defs>
+  <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#0C1224"/>
+    <stop offset="100%" stop-color="#080B15"/>
+  </linearGradient>
+  <radialGradient id="haloAmber" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#F6AD55" stop-opacity="0.16"/>
+    <stop offset="100%" stop-color="#F6AD55" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="haloTeal" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#4FD1C5" stop-opacity="0.16"/>
+    <stop offset="100%" stop-color="#4FD1C5" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="haloCoral" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#F87171" stop-opacity="0.16"/>
+    <stop offset="100%" stop-color="#F87171" stop-opacity="0"/>
+  </radialGradient>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#8493B0"/>
+  </marker>
+  <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#F6AD55"/>
+  </marker>
+  <marker id="arrowTeal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#4FD1C5"/>
+  </marker>
+  <marker id="arrowCoral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#F87171"/>
+  </marker>
+  <marker id="arrowViolet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#A78BFA"/>
+  </marker>
+  <marker id="arrowData" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#38BDF8"/>
+  </marker>
+</defs>
+
+<!-- background and lane halos -->
+<rect width="1400" height="1330" fill="url(#bgGrad)"/>
+<circle cx="260" cy="320" r="250" fill="url(#haloAmber)"/>
+<circle cx="700" cy="520" r="290" fill="url(#haloTeal)"/>
+<circle cx="1150" cy="420" r="250" fill="url(#haloCoral)"/>
+
+<!-- title -->
+<text x="700" y="56" font-size="27" font-weight="800" fill="#E7ECF7" text-anchor="middle" letter-spacing="0.5px">COMPUTER-USE AUTOMATION</text>
+<text x="700" y="82" font-size="13.5" fill="#5B6B8C" text-anchor="middle">goal  →  one model run  →  capability artifact  →  deterministic replay  →  typed result</text>
+
+<!-- lane headers -->
+<text x="260" y="118" font-size="12" font-weight="700" fill="#F6AD55" text-anchor="middle" letter-spacing="1px">DISCOVER · MODEL IN THE LOOP</text>
+<text x="700" y="118" font-size="12" font-weight="700" fill="#4FD1C5" text-anchor="middle" letter-spacing="1px">REPLAY · NO MODEL</text>
+<text x="1150" y="118" font-size="12" font-weight="700" fill="#F87171" text-anchor="middle" letter-spacing="1px">HANDOFF · A PERSON</text>
+
+<!-- ================= DISCOVER lane ================= -->
+<ellipse cx="260" cy="160" rx="80" ry="26" fill="#111A2E" stroke="#5B6B8C" stroke-width="2"/>
+<text x="260" y="165" font-size="14" font-weight="700" fill="#E7ECF7" text-anchor="middle">goal + inputs</text>
+<path d="M260,186 L260,208" fill="none" stroke="#F6AD55" stroke-width="1.8" marker-end="url(#arrowAmber)"/>
+
+<rect x="155" y="210" width="210" height="56" rx="10" fill="#16213A" stroke="#F6AD55" stroke-width="1.6"/>
+<rect x="155" y="210" width="210" height="4" rx="10" fill="#F6AD55"/>
+<text x="260" y="236" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">discover/agent.py</text>
+<text x="260" y="254" font-size="11" fill="#8493B0" text-anchor="middle">observe → decide → act · Claude Sonnet</text>
+<path d="M260,266 L260,298" fill="none" stroke="#F6AD55" stroke-width="1.8" marker-end="url(#arrowAmber)"/>
+<rect x="268" y="274" width="36" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="286" y="287" font-size="11" font-weight="500" fill="#F6AD55" text-anchor="middle">done</text>
+
+<rect x="155" y="300" width="210" height="56" rx="10" fill="#16213A" stroke="#F6AD55" stroke-width="1.6"/>
+<rect x="155" y="300" width="210" height="4" rx="10" fill="#F6AD55"/>
+<text x="260" y="326" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">discover/recorder.py</text>
+<text x="260" y="344" font-size="11" fill="#8493B0" text-anchor="middle">snapshot refs → ranked locator chains</text>
+
+<!-- recorder writes the draft artifact -->
+<path d="M365,328 C455,328 455,250 543,250" fill="none" stroke="#F6AD55" stroke-width="1.8" marker-end="url(#arrowAmber)"/>
+<rect x="416" y="279" width="78" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="455" y="292" font-size="11" font-weight="500" fill="#F6AD55" text-anchor="middle">draft artifact</text>
+
+<!-- tenant overrides -->
+<path d="M165,420 A95,10 0 0 1 355,420 L355,468 A95,10 0 0 1 165,468 Z" fill="#0D1B2E" stroke="#38BDF8" stroke-width="1.6"/>
+<ellipse cx="260" cy="420" rx="95" ry="10" fill="#12233B" stroke="#38BDF8" stroke-width="1.6"/>
+<text x="260" y="452" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">tenants/*.yaml</text>
+<path d="M355,446 L598,448" fill="none" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="6,5" marker-end="url(#arrowData)"/>
+<rect x="398" y="420" width="160" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="478" y="433" font-size="11" font-weight="500" fill="#38BDF8" text-anchor="middle">override → name@ver+tenant</text>
+
+<!-- recoverable conditions -->
+<rect x="70" y="540" width="380" height="190" rx="12" fill="#111A2E" stroke="#A78BFA" stroke-width="1.4"/>
+<text x="260" y="564" font-size="13" font-weight="700" fill="#A78BFA" text-anchor="middle">RECOVERABLE</text>
+<text x="260" y="580" font-size="10.5" fill="#5B6B8C" text-anchor="middle">status unchanged · listed in evidence.recoveries</text>
+<rect x="86" y="590" width="348" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="260" y="607" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">session expired → replay ensure_session</text>
+<rect x="86" y="624" width="348" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="260" y="641" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">failed or 500 page load → retry, backoff</text>
+<rect x="86" y="658" width="348" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="260" y="675" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">unexpected dialog → dismiss</text>
+<rect x="86" y="692" width="348" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="260" y="709" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">slow load → absorbed by the waits</text>
+
+<!-- step loop <-> recovery -->
+<path d="M518,620 L454,620" fill="none" stroke="#A78BFA" stroke-width="1.6" marker-end="url(#arrowViolet)"/>
+<path d="M452,690 L516,690" fill="none" stroke="#A78BFA" stroke-width="1.6" marker-end="url(#arrowViolet)"/>
+<rect x="459" y="597" width="54" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="486" y="610" font-size="11" font-weight="500" fill="#A78BFA" text-anchor="middle">detected</text>
+<rect x="461" y="696" width="50" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="486" y="709" font-size="11" font-weight="500" fill="#A78BFA" text-anchor="middle">resume</text>
+
+<!-- ================= REPLAY lane ================= -->
+<rect x="545" y="140" width="310" height="252" rx="12" fill="#111A2E" stroke="#4FD1C5" stroke-width="1.4"/>
+<text x="700" y="164" font-size="13" font-weight="700" fill="#4FD1C5" text-anchor="middle">CAPABILITY ARTIFACT</text>
+<text x="700" y="180" font-size="10.5" fill="#5B6B8C" text-anchor="middle">artifacts/&lt;name&gt;@&lt;semver&gt;.json · typed, versioned, reviewed</text>
+<rect x="561" y="190" width="278" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="207" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">inputs + outputs, typed</text>
+<rect x="561" y="224" width="278" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="241" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">steps: intent · action · value</text>
+<rect x="561" y="258" width="278" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="275" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">target: locator chain, not CSS</text>
+<rect x="561" y="292" width="278" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="309" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">pre / post checkpoints</text>
+<rect x="561" y="326" width="278" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="343" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">outcomes: declared business results</text>
+<rect x="561" y="360" width="278" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="377" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">risk · status · content_hash</text>
+<path d="M700,392 L700,418" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+
+<rect x="600" y="420" width="200" height="56" rx="10" fill="#16213A" stroke="#4FD1C5" stroke-width="1.6"/>
+<rect x="600" y="420" width="200" height="4" rx="10" fill="#4FD1C5"/>
+<text x="700" y="446" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">replay/engine.py</text>
+<text x="700" y="464" font-size="11" fill="#8493B0" text-anchor="middle">state machine · no model</text>
+
+<!-- the caller -->
+<ellipse cx="960" cy="448" rx="78" ry="26" fill="#111A2E" stroke="#5B6B8C" stroke-width="2"/>
+<text x="960" y="453" font-size="14" font-weight="700" fill="#E7ECF7" text-anchor="middle">caller (agent)</text>
+<path d="M882,448 L802,448" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+<rect x="810" y="420" width="64" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="842" y="433" font-size="11" font-weight="500" fill="#4FD1C5" text-anchor="middle">typed inputs</text>
+<path d="M700,476 L700,518" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+
+<!-- per-step loop -->
+<rect x="520" y="520" width="360" height="256" rx="12" fill="#111A2E" stroke="#4FD1C5" stroke-width="1.4"/>
+<text x="700" y="544" font-size="13" font-weight="700" fill="#4FD1C5" text-anchor="middle">EVERY STEP</text>
+<text x="700" y="560" font-size="10.5" fill="#5B6B8C" text-anchor="middle">verified, never assumed</text>
+<rect x="536" y="570" width="328" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="587" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">1  wait for pre checkpoint</text>
+<rect x="536" y="604" width="328" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="621" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">2  check declared outcomes</text>
+<rect x="536" y="638" width="328" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="655" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">3  detectors: session · error · dialog</text>
+<rect x="536" y="672" width="328" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="689" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">4  resolve target: exactly one match</text>
+<rect x="536" y="706" width="328" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="723" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">5  act through policy</text>
+<rect x="536" y="740" width="328" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="700" y="757" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" font-weight="500" fill="#E7ECF7" text-anchor="middle">6  verify post checkpoint</text>
+<!-- next step loop -->
+<path d="M882,753 C925,753 925,583 884,583" fill="none" stroke="#A78BFA" stroke-width="1.6" stroke-dasharray="6,5" marker-end="url(#arrowViolet)"/>
+<text x="928" y="672" font-size="11" font-weight="500" fill="#A78BFA" text-anchor="start">next step</text>
+
+<!-- results -->
+<path d="M700,776 L700,806" fill="none" stroke="#4FD1C5" stroke-width="1.8"/>
+<path d="M620,806 L1115,806" fill="none" stroke="#4FD1C5" stroke-width="1.8"/>
+<path d="M620,806 L620,826" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+<path d="M785,806 L785,826" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+<path d="M950,806 L950,826" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+<path d="M1115,806 L1115,826" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+<rect x="822" y="790" width="96" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="870" y="803" font-size="11" font-weight="500" fill="#4FD1C5" text-anchor="middle">result to caller</text>
+
+<rect x="545" y="828" width="150" height="50" rx="10" fill="#16213A" stroke="#4FD1C5" stroke-width="1.6"/>
+<rect x="545" y="828" width="150" height="4" rx="10" fill="#4FD1C5"/>
+<text x="620" y="852" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="600" fill="#E7ECF7" text-anchor="middle">success</text>
+<text x="620" y="869" font-size="11" fill="#8493B0" text-anchor="middle">typed outputs</text>
+
+<rect x="710" y="828" width="150" height="50" rx="10" fill="#16213A" stroke="#FACC15" stroke-width="1.6"/>
+<rect x="710" y="828" width="150" height="4" rx="10" fill="#FACC15"/>
+<text x="785" y="852" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="600" fill="#E7ECF7" text-anchor="middle">business_outcome</text>
+<text x="785" y="869" font-size="11" fill="#8493B0" text-anchor="middle">e.g. account_not_found</text>
+
+<rect x="875" y="828" width="150" height="50" rx="10" fill="#16213A" stroke="#F87171" stroke-width="1.6"/>
+<rect x="875" y="828" width="150" height="4" rx="10" fill="#F87171"/>
+<text x="950" y="852" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="600" fill="#E7ECF7" text-anchor="middle">needs_human</text>
+<text x="950" y="869" font-size="11" fill="#8493B0" text-anchor="middle">paused on purpose</text>
+
+<rect x="1040" y="828" width="150" height="50" rx="10" fill="#16213A" stroke="#94A3B8" stroke-width="1.6"/>
+<rect x="1040" y="828" width="150" height="4" rx="10" fill="#94A3B8"/>
+<text x="1115" y="852" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="600" fill="#E7ECF7" text-anchor="middle">failure</text>
+<text x="1115" y="869" font-size="11" fill="#8493B0" text-anchor="middle">step · expected · observed</text>
+
+<!-- ================= HANDOFF lane ================= -->
+<ellipse cx="1150" cy="160" rx="70" ry="26" fill="#111A2E" stroke="#5B6B8C" stroke-width="2"/>
+<text x="1150" y="165" font-size="14" font-weight="700" fill="#E7ECF7" text-anchor="middle">operator</text>
+<path d="M1150,186 L1150,208" fill="none" stroke="#F87171" stroke-width="1.8" marker-end="url(#arrowCoral)"/>
+
+<rect x="1045" y="210" width="210" height="56" rx="10" fill="#16213A" stroke="#F87171" stroke-width="1.6"/>
+<rect x="1045" y="210" width="210" height="4" rx="10" fill="#F87171"/>
+<text x="1150" y="236" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">cua operator</text>
+<text x="1150" y="254" font-size="11" fill="#8493B0" text-anchor="middle">take · release · approve · decline</text>
+<path d="M1150,266 L1150,298" fill="none" stroke="#F87171" stroke-width="1.8" marker-end="url(#arrowCoral)"/>
+
+<path d="M1050,310 A100,10 0 0 1 1250,310 L1250,364 A100,10 0 0 1 1050,364 Z" fill="#0D1B2E" stroke="#38BDF8" stroke-width="1.6"/>
+<ellipse cx="1150" cy="310" rx="100" ry="10" fill="#12233B" stroke="#38BDF8" stroke-width="1.6"/>
+<text x="1150" y="342" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">control.json</text>
+<text x="1150" y="359" font-size="10.5" fill="#8493B0" text-anchor="middle">lease: owner · holder · epoch</text>
+
+<!-- intervention request -->
+<rect x="1035" y="560" width="230" height="188" rx="12" fill="#111A2E" stroke="#F87171" stroke-width="1.4"/>
+<text x="1150" y="584" font-size="13" font-weight="700" fill="#F87171" text-anchor="middle">INTERVENTION REQUEST</text>
+<text x="1150" y="600" font-size="10.5" fill="#5B6B8C" text-anchor="middle">from replay, or discovery's request_human</text>
+<rect x="1051" y="610" width="198" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="1150" y="627" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="500" fill="#E7ECF7" text-anchor="middle">capability · step · intent</text>
+<rect x="1051" y="644" width="198" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="1150" y="661" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="500" fill="#E7ECF7" text-anchor="middle">why it stopped</text>
+<rect x="1051" y="678" width="198" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="1150" y="695" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="500" fill="#E7ECF7" text-anchor="middle">redacted URL</text>
+<rect x="1051" y="712" width="198" height="26" rx="7" fill="#16213A" stroke="#2B3B5C" stroke-width="1.1"/>
+<text x="1150" y="729" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="500" fill="#E7ECF7" text-anchor="middle">masked screenshot</text>
+
+<!-- step loop raises the request -->
+<path d="M880,540 C960,540 980,600 1033,600" fill="none" stroke="#F87171" stroke-width="1.8" marker-end="url(#arrowCoral)"/>
+<rect x="912" y="512" width="88" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="956" y="525" font-size="11" font-weight="500" fill="#F87171" text-anchor="middle">needs a person</text>
+<!-- request is written into the lease file -->
+<path d="M1150,560 L1150,378" fill="none" stroke="#F87171" stroke-width="1.8" marker-end="url(#arrowCoral)"/>
+<rect x="1118" y="462" width="64" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="1150" y="475" font-size="11" font-weight="500" fill="#F87171" text-anchor="middle">written to</text>
+
+<!-- ================= EXECUTION ================= -->
+<text x="700" y="962" font-size="12" font-weight="700" fill="#8493B0" text-anchor="middle" letter-spacing="1px">EXECUTION · ONE LIVE BROWSER</text>
+
+<!-- policy -->
+<path d="M120,870 A110,10 0 0 1 340,870 L340,920 A110,10 0 0 1 120,920 Z" fill="#0D1B2E" stroke="#38BDF8" stroke-width="1.6"/>
+<ellipse cx="230" cy="870" rx="110" ry="10" fill="#12233B" stroke="#38BDF8" stroke-width="1.6"/>
+<text x="230" y="902" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">policies/parabank.yaml</text>
+<path d="M310,928 L418,994" fill="none" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrowData)"/>
+
+<!-- discovery acts through the same guard -->
+<path d="M155,238 C60,238 40,300 40,500 L40,1000 Q40,1020 60,1020 L418,1020" fill="none" stroke="#F6AD55" stroke-width="1.8" marker-end="url(#arrowAmber)"/>
+<!-- replay acts through the guard -->
+<path d="M530,776 L530,986" fill="none" stroke="#4FD1C5" stroke-width="1.8" marker-end="url(#arrowTeal)"/>
+
+<rect x="420" y="988" width="560" height="64" rx="10" fill="#16213A" stroke="#C9D3E8" stroke-width="1.6"/>
+<rect x="420" y="988" width="560" height="4" rx="10" fill="#C9D3E8"/>
+<text x="700" y="1016" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="15" font-weight="600" fill="#E7ECF7" text-anchor="middle">surface/guarded.py · GuardedSurface</text>
+<text x="700" y="1038" font-size="11.5" fill="#8493B0" text-anchor="middle">policy check · control lease · masked screenshots · redacted log</text>
+
+<!-- run evidence -->
+<path d="M1040,995 A90,10 0 0 1 1220,995 L1220,1045 A90,10 0 0 1 1040,1045 Z" fill="#0D1B2E" stroke="#38BDF8" stroke-width="1.6"/>
+<ellipse cx="1130" cy="995" rx="90" ry="10" fill="#12233B" stroke="#38BDF8" stroke-width="1.6"/>
+<text x="1130" y="1024" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">runs/&lt;id&gt;/</text>
+<text x="1130" y="1040" font-size="10.5" fill="#8493B0" text-anchor="middle">log.jsonl · screenshots</text>
+<path d="M980,1020 L1036,1020" fill="none" stroke="#38BDF8" stroke-width="1.6" marker-end="url(#arrowData)"/>
+
+<!-- the lease gates every action -->
+<path d="M1250,337 L1300,337 L1300,1076 L960,1076 L960,1056" fill="none" stroke="#F87171" stroke-width="1.6" stroke-dasharray="6,5" marker-end="url(#arrowCoral)"/>
+<text x="1290" y="720" font-size="11" font-weight="500" fill="#F87171" text-anchor="middle" transform="rotate(-90 1290 720)">lease checked before every action</text>
+
+<path d="M700,1052 L700,1090" fill="none" stroke="#8493B0" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="470" y="1092" width="460" height="56" rx="10" fill="#16213A" stroke="#2B3B5C" stroke-width="1.6"/>
+<rect x="470" y="1092" width="460" height="4" rx="10" fill="#2B3B5C"/>
+<text x="700" y="1118" font-family="'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14.5" font-weight="600" fill="#E7ECF7" text-anchor="middle">surface/web.py · Surface</text>
+<text x="700" y="1136" font-size="11" fill="#8493B0" text-anchor="middle">the only Playwright code: observe · resolve · act</text>
+
+<!-- the person works in the same live window -->
+<path d="M1220,160 L1360,160 L1360,1120 L932,1120" fill="none" stroke="#F87171" stroke-width="1.6" stroke-dasharray="6,5" marker-end="url(#arrowCoral)"/>
+<rect x="1046" y="1124" width="200" height="17" rx="4" fill="#0A0F1C" opacity="0.88"/>
+<text x="1146" y="1137" font-size="11" font-weight="500" fill="#F87171" text-anchor="middle">same live window · clicks captured</text>
+
+<path d="M700,1148 L700,1180" fill="none" stroke="#8493B0" stroke-width="1.8" marker-end="url(#arrow)"/>
+<ellipse cx="700" cy="1210" rx="150" ry="28" fill="#111A2E" stroke="#5B6B8C" stroke-width="2"/>
+<text x="700" y="1215" font-size="14" font-weight="700" fill="#E7ECF7" text-anchor="middle">ParaBank (legacy JSP)</text>
+<text x="530" y="1214" font-size="11" fill="#5B6B8C" text-anchor="end">live, or a sanitized offline HAR pack</text>
+<text x="870" y="1214" font-size="11" fill="#5B6B8C" text-anchor="start">faults and tenant variants: our browser only</text>
+
+<!-- legend -->
+<line x1="150" y1="1284" x2="176" y2="1284" stroke="#F6AD55" stroke-width="3"/>
+<text x="186" y="1288" font-size="11.5" font-weight="500" fill="#8493B0">discovery (model)</text>
+<line x1="330" y1="1284" x2="356" y2="1284" stroke="#4FD1C5" stroke-width="3"/>
+<text x="366" y="1288" font-size="11.5" font-weight="500" fill="#8493B0">replay (no model)</text>
+<line x1="510" y1="1284" x2="536" y2="1284" stroke="#F87171" stroke-width="3"/>
+<text x="546" y="1288" font-size="11.5" font-weight="500" fill="#8493B0">human handoff</text>
+<line x1="670" y1="1284" x2="696" y2="1284" stroke="#A78BFA" stroke-width="3"/>
+<text x="706" y="1288" font-size="11.5" font-weight="500" fill="#8493B0">recovery / step loop</text>
+<line x1="860" y1="1284" x2="886" y2="1284" stroke="#38BDF8" stroke-width="3"/>
+<text x="896" y="1288" font-size="11.5" font-weight="500" fill="#8493B0">files on disk</text>
+<line x1="1010" y1="1284" x2="1036" y2="1284" stroke="#FACC15" stroke-width="3"/>
+<text x="1046" y="1288" font-size="11.5" font-weight="500" fill="#8493B0">business outcome</text>
+</svg>

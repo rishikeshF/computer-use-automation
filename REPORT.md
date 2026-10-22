@@ -17,6 +17,8 @@ discover (model) --trace--> recorder --artifact--> replay engine --result--> cal
                         handoff: control.json <--> cua operator (a person)
 ```
 
+![Architecture: discovery (model) records a capability artifact; replay (no model) runs it step by step and returns success, business_outcome, needs_human or failure; a person takes the same live browser through the control lease; every action passes GuardedSurface before the Playwright surface.](docs/architecture.svg)
+
 - **Surface** (`observe`, `resolve`, `act`) is the only code that touches Playwright. Perception
   is a frame-aware snapshot of what an operator sees: role, name, inferred label, table row and
   column, box. The model acts on snapshot refs and never writes a selector.
